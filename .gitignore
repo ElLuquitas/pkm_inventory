@@ -7,6 +7,7 @@ data/inventory.csv
 data/card_cache.json
 data/sets_cache.json
 useless/
+run_inventory.sh
 
 # Python
 __pycache__/
