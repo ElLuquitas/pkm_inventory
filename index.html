@@ -297,7 +297,7 @@
   <div class="logo"><span>◆</span> PKM <span>INVENTORY</span></div>
   <div class="header-actions">
     <button class="btn btn-ghost btn-sm mobile-filter-btn" onclick="toggleSidebar()">⊟ Filtros</button>
-    <button class="btn btn-ghost btn-sm lock-btn edit-only" id="lock-btn" onclick="openPwModal()" title="Bloquear edición">🔓</button>
+    <button class="btn btn-ghost btn-sm lock-btn" id="lock-btn" onclick="openPwModal()" title="Bloquear edición">🔓</button>
     <button class="btn btn-ghost btn-sm" onclick="reloadInventory()">↺ Sync</button>
     <button class="btn btn-primary btn-sm edit-only" onclick="openAddModal()">+ Agregar carta</button>
   </div>
@@ -693,7 +693,7 @@ function renderTable(cards) {
   }
   const sorted = getSortedCards(cards);
   const rows = sorted.map(c=>`
-    <tr data-id="${c.id}" onclick="selectRow(${c.id},'${esc(c.tcg_card_id)}','${esc(c.card_name||'')}','${esc(c.edition_name||'')}')">
+    <tr data-id="${c.id}" onclick="selectRow(${c.id},'${esc(c.tcg_card_id)}','${esc(c.card_name||'')}','${esc(c.edition_name||'')}','${esc(c.image_url||'')}')">
       <td style="font-family:var(--mono);font-size:0.72rem;color:var(--muted)">${c.id}</td>
       <td>
         <div style="font-weight:600;font-size:0.86rem">${c.card_name||'—'}</div>
@@ -743,30 +743,34 @@ function renderTable(cards) {
 function isMobile() { return window.innerWidth <= 1100; }
 
 // ── Selección fila → panel imagen o modal móvil ──
-function selectRow(id, tcgId, cardName, editionName) {
+function selectRow(id, tcgId, cardName, editionName, imageUrl) {
   document.querySelectorAll('tbody tr').forEach(r=>r.classList.remove('selected'));
   const tr = document.querySelector(`tr[data-id="${id}"]`);
   if (tr) tr.classList.add('selected');
   selectedRowId = id;
 
   if (isMobile()) {
-    openImgModal(tcgId, cardName, editionName);
+    openImgModal(tcgId, cardName, editionName, imageUrl);
   } else {
-    loadCardImage(tcgId, cardName, editionName,
+    loadCardImage(tcgId, cardName, editionName, imageUrl,
       document.getElementById('card-img-wrap'),
       document.getElementById('card-img-info'));
   }
 }
 
 // ── Carga de imagen (reutilizable) ──
-function loadCardImage(tcgId, cardName, editionName, wrapEl, infoEl) {
+function loadCardImage(tcgId, cardName, editionName, imageUrl, wrapEl, infoEl) {
   wrapEl.innerHTML = `<div class="spinner"></div>`;
   if (infoEl) infoEl.innerHTML = `
     <div class="card-img-name">${cardName||tcgId}</div>
     <div class="card-img-meta">${editionName||''}<br/><span style="color:var(--muted)">${tcgId}</span></div>`;
 
-  fetch(`${API_BASE}/card-image/${tcgId}`)
-    .then(r=>r.json())
+  // Si ya tenemos la URL en el objeto carta, usarla directamente sin llamar al backend
+  const useUrl = imageUrl
+    ? Promise.resolve({ image_url: imageUrl })
+    : fetch(`${API_BASE}/card-image/${tcgId}`).then(r=>r.json());
+
+  useUrl
     .then(data=>{
       const img = new Image();
       img.src = data.image_url;
@@ -788,11 +792,11 @@ function loadCardImage(tcgId, cardName, editionName, wrapEl, infoEl) {
 }
 
 // ── Modal imagen móvil ──
-function openImgModal(tcgId, cardName, editionName) {
+function openImgModal(tcgId, cardName, editionName, imageUrl) {
   document.getElementById('img-modal-title').textContent = cardName || tcgId;
   document.getElementById('img-modal-meta').textContent = `${editionName||''} · ${tcgId}`;
   document.getElementById('img-modal').classList.add('open');
-  loadCardImage(tcgId, cardName, editionName,
+  loadCardImage(tcgId, cardName, editionName, imageUrl,
     document.getElementById('img-modal-wrap'), null);
 }
 
