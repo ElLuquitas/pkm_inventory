@@ -100,36 +100,39 @@ def filter_inventory(filters: CardFilters):
 
 
 @app.post("/cards", summary="Agregar carta", status_code=201)
-def add_card(card: CardInput):
-    """Agrega una carta nueva al inventario."""
+async def add_card(card: CardInput):
+    """Agrega una carta nueva al inventario y re-enriquece."""
     try:
         new_id = controller.add_card(card.model_dump())
         controller.load_inventory()
+        await controller.enrich_inventory()
         return {"id": new_id, "message": "Carta agregada correctamente."}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.put("/cards/{card_id}", summary="Actualizar carta")
-def update_card(card_id: int, card: CardInput):
-    """Actualiza los datos de una carta existente."""
+async def update_card(card_id: int, card: CardInput):
+    """Actualiza los datos de una carta existente y re-enriquece."""
     try:
         success = controller.update_card(card_id, card.model_dump())
         if not success:
             raise HTTPException(status_code=404, detail=f"Carta con ID {card_id} no encontrada.")
         controller.load_inventory()
+        await controller.enrich_inventory()
         return {"message": "Carta actualizada correctamente."}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.delete("/cards/{card_id}", summary="Eliminar carta")
-def delete_card(card_id: int):
-    """Elimina una carta del inventario."""
+async def delete_card(card_id: int):
+    """Elimina una carta del inventario y re-enriquece."""
     success = controller.delete_card(card_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Carta con ID {card_id} no encontrada.")
     controller.load_inventory()
+    await controller.enrich_inventory()
     return {"message": "Carta eliminada correctamente."}
 
 

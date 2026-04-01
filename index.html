@@ -233,11 +233,29 @@
   .tcgdex-result-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.55rem 0.7rem; cursor: pointer; transition: background 0.1s; border-bottom: 1px solid var(--border); }
   .tcgdex-result-item:last-child { border-bottom: none; }
   .tcgdex-result-item:hover { background: rgba(245,200,66,0.07); }
-  .tcgdex-thumb { width: 34px; height: 48px; object-fit: contain; border-radius: 3px; background: var(--border); flex-shrink: 0; }
-  .tcgdex-item-name { font-weight: 700; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tcgdex-item-meta { font-family: var(--mono); font-size: 0.64rem; color: var(--muted); margin-top: 1px; }
+  .tcgdex-thumb { width: 44px; height: 62px; object-fit: contain; border-radius: 3px; background: var(--border); flex-shrink: 0; }
+  .tcgdex-item-name { font-weight: 700; font-size: 0.96rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tcgdex-item-meta { font-family: var(--mono); font-size: 0.76rem; color: var(--muted); margin-top: 2px; }
   .tcgdex-searching { padding: 0.75rem; text-align: center; font-family: var(--mono); font-size: 0.74rem; color: var(--muted); }
   .divider-text { text-align: center; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
+
+
+  /* ── Columnas ordenables ── */
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: var(--text); }
+  th.sortable .sort-icon { margin-left: 4px; opacity: 0.4; font-size: 0.7em; }
+  th.sortable.asc .sort-icon::after  { content: '▲'; opacity: 1; }
+  th.sortable.desc .sort-icon::after { content: '▼'; opacity: 1; }
+  th.sortable:not(.asc):not(.desc) .sort-icon::after { content: '⇅'; }
+
+  /* ── Modo lectura ── */
+  .edit-only { transition: opacity 0.2s; }
+  body.readonly .edit-only { opacity: 0; pointer-events: none; }
+
+  /* ── Modal contraseña ── */
+  .lock-btn { font-size: 1rem; line-height: 1; padding: 0.3rem 0.5rem; }
+  #pw-modal .modal { max-width: 340px; }
+  .pw-hint { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
 
   /* ── Confirm modal ── */
   .confirm-msg { font-size: 0.88rem; color: var(--muted); line-height: 1.5; }
@@ -279,6 +297,7 @@
   <div class="logo"><span>◆</span> PKM <span>INVENTORY</span></div>
   <div class="header-actions">
     <button class="btn btn-ghost btn-sm mobile-filter-btn" onclick="toggleSidebar()">⊟ Filtros</button>
+    <button class="btn btn-ghost btn-sm lock-btn edit-only" id="lock-btn" onclick="openPwModal()" title="Bloquear edición">🔓</button>
     <button class="btn btn-ghost btn-sm" onclick="reloadInventory()">↺ Sync</button>
     <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Agregar carta</button>
   </div>
@@ -371,6 +390,25 @@
   </div>
 </div>
 
+<!-- Modal contraseña -->
+<div class="modal-backdrop" id="pw-modal">
+  <div class="modal" style="max-width:340px">
+    <div class="modal-header">
+      <div class="modal-title" id="pw-modal-title">Modo edición</div>
+      <button class="modal-close" onclick="closePwModal()">✕</button>
+    </div>
+    <p class="pw-hint" id="pw-hint">Ingresa la contraseña para activar la edición.</p>
+    <div class="form-group">
+      <label>Contraseña</label>
+      <input type="password" id="pw-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')submitPw()" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closePwModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitPw()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal agregar / editar -->
 <div class="modal-backdrop" id="card-modal">
   <div class="modal" style="max-width:500px">
@@ -453,10 +491,20 @@ const API_BASE = '';
 let allCards = [], filteredCards = [];
 let editingId = null, deleteTargetId = null, selectedRowId = null;
 let filterTimer = null, tcgSearchTimer = null;
+let sortCol = null, sortDir = 1; // 1=asc, -1=desc
+let editMode = true; // empieza desbloqueado; cambia a false al bloquear
+
+// Contraseña de edición — cámbiala aquí
+const EDIT_PASSWORD = "pkm1234";
 
 document.addEventListener('DOMContentLoaded', () => {
   loadInventory();
   initResizer();
+  // Restaurar estado de bloqueo desde sessionStorage
+  if (sessionStorage.getItem('editMode') === 'false') {
+    editMode = false;
+    applyEditMode();
+  }
 });
 
 // ── API ──
@@ -604,13 +652,47 @@ function renderError(msg) {
 }
 function esc(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
 
+// ── Ordenación ──
+function sortCards(col) {
+  if (sortCol === col) {
+    sortDir *= -1;
+  } else {
+    sortCol = col;
+    sortDir = 1;
+  }
+  renderTable(filteredCards);
+}
+
+function getSortedCards(cards) {
+  if (!sortCol) return cards;
+  return [...cards].sort((a, b) => {
+    let va = a[sortCol], vb = b[sortCol];
+    // Número local: ordenar numéricamente si es posible
+    if (sortCol === 'card_local_number') {
+      va = parseInt(va) || va || '';
+      vb = parseInt(vb) || vb || '';
+    }
+    if (va === null || va === undefined || va === '' || va === 'N/A') return 1;
+    if (vb === null || vb === undefined || vb === '' || vb === 'N/A') return -1;
+    if (va < vb) return -1 * sortDir;
+    if (va > vb) return  1 * sortDir;
+    return 0;
+  });
+}
+
+function thClass(col) {
+  if (sortCol !== col) return 'sortable';
+  return sortCol === col ? `sortable ${sortDir === 1 ? 'asc' : 'desc'}` : 'sortable';
+}
+
 function renderTable(cards) {
   if (!cards.length) {
     document.getElementById('table-container').innerHTML =
       `<div class="empty"><div class="empty-icon">◇</div>No se encontraron cartas.</div>`;
     return;
   }
-  const rows = cards.map(c=>`
+  const sorted = getSortedCards(cards);
+  const rows = sorted.map(c=>`
     <tr data-id="${c.id}" onclick="selectRow(${c.id},'${esc(c.tcg_card_id)}','${esc(c.card_name||'')}','${esc(c.edition_name||'')}')">
       <td style="font-family:var(--mono);font-size:0.72rem;color:var(--muted)">${c.id}</td>
       <td>
@@ -618,18 +700,19 @@ function renderTable(cards) {
         <div style="font-family:var(--mono);font-size:0.66rem;color:var(--muted);margin-top:1px">${c.tcg_card_id}</div>
       </td>
       <td style="color:var(--muted);font-size:0.78rem">${c.edition_name||'—'}</td>
+      <td style="font-family:var(--mono);font-size:0.8rem;text-align:center">${c.card_local_number||'—'}</td>
       <td>
         <div class="count-ctrl">
-          <button class="count-btn" onclick="event.stopPropagation();changeCount(${c.id},-1)">−</button>
+          <button class="count-btn edit-only" onclick="event.stopPropagation();changeCount(${c.id},-1)">−</button>
           <span style="min-width:1.4rem;text-align:center">${c.count}</span>
-          <button class="count-btn" onclick="event.stopPropagation();changeCount(${c.id},+1)">+</button>
+          <button class="count-btn edit-only" onclick="event.stopPropagation();changeCount(${c.id},+1)">+</button>
         </div>
       </td>
       <td><span class="badge badge-lang">${c.language||'—'}</span></td>
       <td><span class="badge badge-foil">${c.foil_type||'—'}</span></td>
       <td><span class="badge badge-cond">${c.condition||'—'}</span></td>
       <td><span class="badge badge-stamp">${c.stamp||'None'}</span></td>
-      <td>
+      <td class="edit-only">
         <div class="row-actions" onclick="event.stopPropagation()">
           <button class="btn btn-ghost btn-sm" onclick="openEditModal(${c.id})">✎</button>
           <button class="btn btn-danger btn-sm" onclick="askDelete(${c.id},'${esc(c.card_name||c.tcg_card_id)}')">✕</button>
@@ -640,8 +723,12 @@ function renderTable(cards) {
   document.getElementById('table-container').innerHTML = `
     <div class="table-wrap"><table>
       <thead><tr>
-        <th>#</th><th>Carta</th><th>Edición</th><th>Cantidad</th>
-        <th>Idioma</th><th>Brillo</th><th>Cond.</th><th>Sello</th><th></th>
+        <th onclick="sortCards('id')" class="${thClass('id')}"># <span class="sort-icon"></span></th>
+        <th onclick="sortCards('card_name')" class="${thClass('card_name')}">Carta <span class="sort-icon"></span></th>
+        <th onclick="sortCards('edition_name')" class="${thClass('edition_name')}">Edición <span class="sort-icon"></span></th>
+        <th onclick="sortCards('card_local_number')" class="${thClass('card_local_number')}" style="text-align:center">Nº Set <span class="sort-icon"></span></th>
+        <th onclick="sortCards('count')" class="${thClass('count')}">Cantidad <span class="sort-icon"></span></th>
+        <th>Idioma</th><th>Brillo</th><th>Cond.</th><th>Sello</th><th class="edit-only"></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
@@ -858,9 +945,53 @@ function toast(msg, isError=false) {
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
 
 // ── Cerrar al click fuera ──
+
+// ── Modo edición / readonly ──
+function applyEditMode() {
+  if (editMode) {
+    document.body.classList.remove('readonly');
+    document.getElementById('lock-btn').textContent = '🔓';
+    document.getElementById('lock-btn').title = 'Bloquear edición';
+  } else {
+    document.body.classList.add('readonly');
+    document.getElementById('lock-btn').textContent = '🔒';
+    document.getElementById('lock-btn').title = 'Desbloquear edición';
+  }
+  sessionStorage.setItem('editMode', editMode);
+}
+
+function openPwModal() {
+  const isLocked = !editMode;
+  document.getElementById('pw-modal-title').textContent = isLocked ? 'Desbloquear edición' : 'Bloquear edición';
+  document.getElementById('pw-hint').textContent = isLocked
+    ? 'Ingresa la contraseña para activar la edición.'
+    : 'Ingresa la contraseña para bloquear la edición.';
+  document.getElementById('pw-input').value = '';
+  document.getElementById('pw-modal').classList.add('open');
+  setTimeout(() => document.getElementById('pw-input').focus(), 100);
+}
+
+function closePwModal() {
+  document.getElementById('pw-modal').classList.remove('open');
+}
+
+function submitPw() {
+  const val = document.getElementById('pw-input').value;
+  if (val !== EDIT_PASSWORD) {
+    document.getElementById('pw-hint').textContent = '❌ Contraseña incorrecta.';
+    document.getElementById('pw-input').value = '';
+    return;
+  }
+  editMode = !editMode;
+  applyEditMode();
+  closePwModal();
+  toast(editMode ? 'Modo edición activado 🔓' : 'Edición bloqueada 🔒');
+}
+
 document.getElementById('card-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeModal(); });
 document.getElementById('confirm-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeConfirm(); });
 document.getElementById('img-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeImgModal(); });
+document.getElementById('pw-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closePwModal(); });
 document.addEventListener('click', e=>{ if(!e.target.closest('.tcgdex-search-wrap')) hideTcgResults(); });
 document.addEventListener('click', e=>{ if(e.target===document.getElementById('sidebar') || (!e.target.closest('#sidebar') && !e.target.closest('.mobile-filter-btn'))) {
   if(window.innerWidth<=768) document.getElementById('sidebar').classList.remove('open');
