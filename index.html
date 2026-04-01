@@ -22,6 +22,9 @@
     --radius:   6px;
     --mono:     'Space Mono', monospace;
     --sans:     'Syne', sans-serif;
+    --header-h: 55px;
+    --sidebar-w: 240px;
+    --panel-w:  280px; /* ancho inicial del panel de imagen */
   }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { font-size: 15px; }
@@ -34,22 +37,29 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--border);
     background: var(--surface); position: sticky; top: 0; z-index: 100;
+    height: var(--header-h);
   }
   .logo { font-weight: 800; font-size: 1.2rem; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.5rem; }
   .logo span { color: var(--accent); }
   .header-actions { display: flex; gap: 0.5rem; align-items: center; }
 
   /* ── Layout ── */
-  .layout { display: grid; grid-template-columns: 240px 1fr 200px; min-height: calc(100vh - 55px); }
-  @media (max-width: 1100px) { .layout { grid-template-columns: 240px 1fr; } .card-panel { display: none !important; } }
-  @media (max-width: 768px)  { .layout { grid-template-columns: 1fr; } .sidebar { display: none; } .sidebar.open { display: flex; } }
+  /* Desktop: sidebar fijo | main flexible | resizer | panel imagen */
+  .layout {
+    display: flex;
+    height: calc(100vh - var(--header-h));
+    overflow: hidden;
+  }
 
   /* ── Sidebar filtros ── */
   .sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
     background: var(--surface); border-right: 1px solid var(--border);
     padding: 1.25rem 1rem; display: flex; flex-direction: column; gap: 1rem;
+    overflow-y: auto;
   }
-  .sidebar-title { font-size: 0.62rem; font-family: var(--mono); letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 0.2rem; }
+  .sidebar-title { font-size: 0.62rem; font-family: var(--mono); letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
   .filter-group { display: flex; flex-direction: column; gap: 0.35rem; }
   .filter-group label { font-size: 0.67rem; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
   .filter-group input, .filter-group select {
@@ -59,17 +69,49 @@
   .filter-group input:focus, .filter-group select:focus { outline: none; border-color: var(--accent); }
   .filter-group select option { background: var(--surface); }
 
+  /* ── Main (área central scrolleable) ── */
+  .main {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 1.5rem;
+    display: flex; flex-direction: column; gap: 1.1rem;
+    overflow-y: auto; overflow-x: auto;
+  }
+
+  /* ── Resizer (barra arrastrable) ── */
+  .resizer {
+    width: 5px;
+    flex-shrink: 0;
+    background: var(--border);
+    cursor: col-resize;
+    transition: background 0.15s;
+    position: relative;
+    z-index: 10;
+  }
+  .resizer:hover, .resizer.dragging { background: var(--accent); }
+  /* Zona de click ampliada con pseudo-elemento invisible */
+  .resizer::before {
+    content: '';
+    position: absolute;
+    inset: 0 -6px;
+  }
+
   /* ── Card image panel ── */
   .card-panel {
+    flex-shrink: 0;
+    width: var(--panel-w);
+    min-width: 160px;
+    max-width: 480px;
     background: var(--surface); border-left: 1px solid var(--border);
     padding: 1.25rem 1rem; display: flex; flex-direction: column; align-items: center;
-    gap: 0.75rem; position: sticky; top: 55px; height: calc(100vh - 55px); overflow-y: auto;
+    gap: 0.75rem; overflow-y: auto;
   }
   .card-panel-title { font-size: 0.62rem; font-family: var(--mono); letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; align-self: flex-start; }
   .card-img-wrap {
-    width: 100%; aspect-ratio: 2/3; border-radius: 8px; overflow: hidden;
+    width: 100%; border-radius: 8px; overflow: hidden;
     background: var(--surface2); border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    aspect-ratio: 2/3;
   }
   .card-img-wrap img { width: 100%; height: 100%; object-fit: contain; transition: opacity 0.25s; }
   .card-img-placeholder { color: var(--border); font-size: 2.5rem; }
@@ -77,7 +119,7 @@
   .card-img-name { font-weight: 700; font-size: 0.85rem; line-height: 1.3; margin-bottom: 0.25rem; }
   .card-img-meta { font-family: var(--mono); font-size: 0.67rem; color: var(--muted); line-height: 1.7; }
 
-  /* ── Buttons ── */
+  /* ── Botones ── */
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
     padding: 0.52rem 1rem; border-radius: var(--radius);
@@ -92,9 +134,6 @@
   .btn-danger:hover { background: var(--danger); color: #fff; }
   .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.72rem; }
   .btn-full { width: 100%; }
-
-  /* ── Main ── */
-  .main { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.1rem; overflow-x: auto; }
 
   /* ── Stats ── */
   .stats-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; }
@@ -131,11 +170,44 @@
   .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── Modal ── */
+  /* ── Modal imagen (móvil) ── */
+  .img-modal-backdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.88); z-index: 300;
+    align-items: flex-end; justify-content: center;
+    padding: 0;
+  }
+  .img-modal-backdrop.open { display: flex; }
+  .img-modal {
+    background: var(--surface); border-radius: 16px 16px 0 0;
+    border: 1px solid var(--border); border-bottom: none;
+    width: 100%; max-width: 480px;
+    padding: 1.25rem 1.25rem 2rem;
+    display: flex; flex-direction: column; align-items: center; gap: 1rem;
+    animation: slideUp 0.25s ease;
+    max-height: 90vh; overflow-y: auto;
+  }
+  @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .img-modal-handle {
+    width: 40px; height: 4px; border-radius: 2px;
+    background: var(--border); align-self: center; margin-bottom: 0.25rem;
+  }
+  .img-modal-header { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+  .img-modal-title { font-weight: 800; font-size: 1rem; letter-spacing: -0.02em; }
+  .img-modal-close { background: transparent; color: var(--muted); font-size: 1.3rem; border: none; padding: 0.2rem 0.4rem; }
+  .img-modal-img-wrap {
+    width: 70%; max-width: 260px; aspect-ratio: 2/3;
+    border-radius: 8px; overflow: hidden; background: var(--surface2);
+    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  }
+  .img-modal-img-wrap img { width: 100%; height: 100%; object-fit: contain; }
+  .img-modal-meta { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); text-align: center; line-height: 1.7; }
+
+  /* ── Modal formulario ── */
   .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; align-items: center; justify-content: center; padding: 1rem; }
   .modal-backdrop.open { display: flex; }
-  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 100%; padding: 1.6rem; display: flex; flex-direction: column; gap: 1.1rem; animation: slideUp 0.2s ease; }
-  @keyframes slideUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 100%; padding: 1.6rem; display: flex; flex-direction: column; gap: 1.1rem; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
   .modal-header { display: flex; align-items: center; justify-content: space-between; }
   .modal-title { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; }
   .modal-close { background: transparent; color: var(--muted); font-size: 1.2rem; line-height: 1; border: none; padding: 0.2rem 0.4rem; border-radius: 3px; }
@@ -176,16 +248,33 @@
   .toast.error { border-left-color: var(--danger); }
   @keyframes toastIn { from { opacity:0; transform:translateX(14px); } to { opacity:1; transform:translateX(0); } }
 
-  /* ── Mobile ── */
+  /* ── Responsive ── */
   .mobile-filter-btn { display: none; }
-  @media (max-width: 768px) { .mobile-filter-btn { display: flex; } .main { padding: 1rem; } td, th { padding: 0.5rem 0.6rem; } }
+
+  @media (max-width: 1100px) {
+    /* Ocultar resizer y panel en tablet/móvil */
+    .resizer, .card-panel { display: none !important; }
+  }
+  @media (max-width: 768px) {
+    .mobile-filter-btn { display: flex; }
+    .sidebar { display: none; position: fixed; top: var(--header-h); left: 0; bottom: 0; z-index: 90; width: 260px; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
+    .sidebar.open { display: flex; }
+    .main { padding: 1rem; }
+    td, th { padding: 0.5rem 0.6rem; }
+  }
+
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* Evitar selección de texto al arrastrar el resizer */
+  .no-select { user-select: none; }
 </style>
 </head>
 <body>
 
+<!-- Header -->
 <header>
   <div class="logo"><span>◆</span> PKM <span>INVENTORY</span></div>
   <div class="header-actions">
@@ -195,7 +284,7 @@
   </div>
 </header>
 
-<div class="layout">
+<div class="layout" id="layout">
 
   <!-- Sidebar filtros -->
   <aside class="sidebar" id="sidebar">
@@ -241,7 +330,7 @@
   </aside>
 
   <!-- Main -->
-  <main class="main">
+  <main class="main" id="main">
     <div class="stats-bar">
       <div class="stat"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Registros</div></div>
       <div class="stat"><div class="stat-value" id="stat-cards">—</div><div class="stat-label">Cartas totales</div></div>
@@ -251,7 +340,10 @@
     <div id="table-container"></div>
   </main>
 
-  <!-- Panel imagen -->
+  <!-- Resizer (barra arrastrable) -->
+  <div class="resizer" id="resizer" title="Arrastra para ajustar el tamaño"></div>
+
+  <!-- Panel imagen (desktop) -->
   <aside class="card-panel" id="card-panel">
     <div class="card-panel-title">Vista previa</div>
     <div class="card-img-wrap" id="card-img-wrap">
@@ -264,6 +356,21 @@
 
 </div>
 
+<!-- Modal imagen (móvil) -->
+<div class="img-modal-backdrop" id="img-modal">
+  <div class="img-modal" id="img-modal-content">
+    <div class="img-modal-handle"></div>
+    <div class="img-modal-header">
+      <div class="img-modal-title" id="img-modal-title">Vista previa</div>
+      <button class="img-modal-close" onclick="closeImgModal()">✕</button>
+    </div>
+    <div class="img-modal-img-wrap" id="img-modal-wrap">
+      <div class="spinner"></div>
+    </div>
+    <div class="img-modal-meta" id="img-modal-meta"></div>
+  </div>
+</div>
+
 <!-- Modal agregar / editar -->
 <div class="modal-backdrop" id="card-modal">
   <div class="modal" style="max-width:500px">
@@ -271,7 +378,6 @@
       <div class="modal-title" id="modal-title">Agregar carta</div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
-
     <div id="tcgdex-search-section">
       <div class="form-group">
         <label>Buscar carta por nombre</label>
@@ -282,7 +388,6 @@
       </div>
       <div class="divider-text">— o ingresa el ID manualmente —</div>
     </div>
-
     <div class="form-grid">
       <div class="form-group full">
         <label>ID Global <span style="color:var(--accent)">*</span></label>
@@ -343,15 +448,18 @@
 <div class="toast-container" id="toast-container"></div>
 
 <script>
-const API_BASE = ''; // Vacío = misma URL que sirve el frontend (funciona local y en Render)
+const API_BASE = '';
 
 let allCards = [], filteredCards = [];
 let editingId = null, deleteTargetId = null, selectedRowId = null;
 let filterTimer = null, tcgSearchTimer = null;
 
-document.addEventListener('DOMContentLoaded', loadInventory);
+document.addEventListener('DOMContentLoaded', () => {
+  loadInventory();
+  initResizer();
+});
 
-// ── API helper ──
+// ── API ──
 async function api(method, path, body=null) {
   const opts = { method, headers: {'Content-Type':'application/json'} };
   if (body) opts.body = JSON.stringify(body);
@@ -360,7 +468,65 @@ async function api(method, path, body=null) {
   return res.json();
 }
 
-// ── Cargar ──
+// ── Resizer (barra arrastrable) ──
+function initResizer() {
+  const resizer  = document.getElementById('resizer');
+  const panel    = document.getElementById('card-panel');
+  if (!resizer || !panel) return;
+
+  // Restaurar ancho guardado
+  const saved = localStorage.getItem('panelWidth');
+  if (saved) panel.style.width = saved + 'px';
+
+  let startX, startW;
+
+  resizer.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startW = panel.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.classList.add('no-select');
+
+    const onMove = e => {
+      const delta = startX - e.clientX; // arrastrar a la izquierda = panel más ancho
+      const newW = Math.min(480, Math.max(160, startW + delta));
+      panel.style.width = newW + 'px';
+    };
+
+    const onUp = () => {
+      resizer.classList.remove('dragging');
+      document.body.classList.remove('no-select');
+      localStorage.setItem('panelWidth', panel.offsetWidth);
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Touch support (tablet)
+  resizer.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startW = panel.offsetWidth;
+    resizer.classList.add('dragging');
+
+    const onMove = e => {
+      const delta = startX - e.touches[0].clientX;
+      const newW = Math.min(480, Math.max(160, startW + delta));
+      panel.style.width = newW + 'px';
+    };
+    const onEnd = () => {
+      resizer.classList.remove('dragging');
+      localStorage.setItem('panelWidth', panel.offsetWidth);
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+    };
+    document.addEventListener('touchmove', onMove);
+    document.addEventListener('touchend', onEnd);
+  });
+}
+
+// ── Cargar inventario ──
 async function loadInventory() {
   renderLoading();
   try {
@@ -480,22 +646,37 @@ function renderTable(cards) {
       <tbody>${rows}</tbody>
     </table></div>`;
 
-  // Restaurar selección visual si corresponde
   if (selectedRowId) {
     const tr = document.querySelector(`tr[data-id="${selectedRowId}"]`);
     if (tr) tr.classList.add('selected');
   }
 }
 
-// ── Selección fila → panel imagen ──
+// ── Detección móvil ──
+function isMobile() { return window.innerWidth <= 1100; }
+
+// ── Selección fila → panel imagen o modal móvil ──
 function selectRow(id, tcgId, cardName, editionName) {
   document.querySelectorAll('tbody tr').forEach(r=>r.classList.remove('selected'));
   const tr = document.querySelector(`tr[data-id="${id}"]`);
   if (tr) tr.classList.add('selected');
   selectedRowId = id;
 
-  const wrap = document.getElementById('card-img-wrap');
-  wrap.innerHTML = `<div class="spinner"></div>`;
+  if (isMobile()) {
+    openImgModal(tcgId, cardName, editionName);
+  } else {
+    loadCardImage(tcgId, cardName, editionName,
+      document.getElementById('card-img-wrap'),
+      document.getElementById('card-img-info'));
+  }
+}
+
+// ── Carga de imagen (reutilizable) ──
+function loadCardImage(tcgId, cardName, editionName, wrapEl, infoEl) {
+  wrapEl.innerHTML = `<div class="spinner"></div>`;
+  if (infoEl) infoEl.innerHTML = `
+    <div class="card-img-name">${cardName||tcgId}</div>
+    <div class="card-img-meta">${editionName||''}<br/><span style="color:var(--muted)">${tcgId}</span></div>`;
 
   fetch(`${API_BASE}/card-image/${tcgId}`)
     .then(r=>r.json())
@@ -503,20 +684,33 @@ function selectRow(id, tcgId, cardName, editionName) {
       const img = new Image();
       img.src = data.image_url;
       img.style.opacity = '0';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      img.style.transition = 'opacity 0.25s';
       img.onload = () => {
-        wrap.innerHTML = '';
-        wrap.appendChild(img);
+        wrapEl.innerHTML = '';
+        wrapEl.appendChild(img);
         requestAnimationFrame(()=>{ img.style.opacity='1'; });
       };
       img.onerror = () => {
-        wrap.innerHTML = `<div style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);text-align:center;padding:1rem">Sin imagen disponible</div>`;
+        wrapEl.innerHTML = `<div style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);text-align:center;padding:1rem">Sin imagen disponible</div>`;
       };
     })
-    .catch(()=>{ wrap.innerHTML = `<div class="card-img-placeholder">◇</div>`; });
+    .catch(()=>{ wrapEl.innerHTML = `<div class="card-img-placeholder">◇</div>`; });
+}
 
-  document.getElementById('card-img-info').innerHTML = `
-    <div class="card-img-name">${cardName||tcgId}</div>
-    <div class="card-img-meta">${editionName||''}<br/><span style="color:var(--muted)">${tcgId}</span></div>`;
+// ── Modal imagen móvil ──
+function openImgModal(tcgId, cardName, editionName) {
+  document.getElementById('img-modal-title').textContent = cardName || tcgId;
+  document.getElementById('img-modal-meta').textContent = `${editionName||''} · ${tcgId}`;
+  document.getElementById('img-modal').classList.add('open');
+  loadCardImage(tcgId, cardName, editionName,
+    document.getElementById('img-modal-wrap'), null);
+}
+
+function closeImgModal() {
+  document.getElementById('img-modal').classList.remove('open');
 }
 
 // ── Count +/− ──
@@ -551,7 +745,7 @@ async function doTcgSearch(q) {
     if (!results.length) { el.innerHTML = '<div class="tcgdex-searching">Sin resultados.</div>'; return; }
     el.innerHTML = results.map(r=>`
       <div class="tcgdex-result-item" onclick="selectTcgCard('${esc(r.id)}','${esc(r.name)}')">
-        <img class="tcgdex-thumb" src="${r.image_url}" alt="${r.name}" onerror="this.style.visibility='hidden'" loading="lazy" />
+        <img class="tcgdex-thumb" src="${r.image_url||''}" alt="${r.name}" onerror="this.style.visibility='hidden'" loading="lazy" />
         <div>
           <div class="tcgdex-item-name">${r.name}</div>
           <div class="tcgdex-item-meta">${r.set_name} · ${r.id}</div>
@@ -567,13 +761,9 @@ function selectTcgCard(id, name) {
   document.getElementById('tcgdex-query').value = `${name}  (${id})`;
   hideTcgResults();
 }
+function hideTcgResults() { const el=document.getElementById('tcgdex-results'); if(el) el.style.display='none'; }
 
-function hideTcgResults() {
-  const el = document.getElementById('tcgdex-results');
-  if (el) el.style.display = 'none';
-}
-
-// ── Modal ──
+// ── Modal formulario ──
 function openAddModal() {
   editingId = null;
   document.getElementById('modal-title').textContent = 'Agregar carta';
@@ -599,13 +789,10 @@ function openEditModal(id) {
   document.getElementById('card-modal').classList.add('open');
 }
 
-function closeModal() {
-  document.getElementById('card-modal').classList.remove('open');
-  hideTcgResults(); editingId = null;
-}
+function closeModal() { document.getElementById('card-modal').classList.remove('open'); hideTcgResults(); editingId=null; }
 
 function clearForm() {
-  ['tcgdex-query','m-tcg-id'].forEach(id=>{ document.getElementById(id).value=''; });
+  ['tcgdex-query','m-tcg-id'].forEach(id=>{document.getElementById(id).value='';});
   document.getElementById('m-count').value=1;
   document.getElementById('m-language').value='EN';
   document.getElementById('m-foil').value='Normal';
@@ -648,8 +835,10 @@ async function confirmDelete() {
     await api('DELETE',`/cards/${deleteTargetId}`);
     toast('Carta eliminada.');
     if (selectedRowId===deleteTargetId) {
-      document.getElementById('card-img-wrap').innerHTML='<div class="card-img-placeholder">◇</div>';
-      document.getElementById('card-img-info').innerHTML='<div class="card-img-meta" style="text-align:center;margin-top:0.5rem">Haz click en una carta</div>';
+      const wrap = document.getElementById('card-img-wrap');
+      if (wrap) wrap.innerHTML='<div class="card-img-placeholder">◇</div>';
+      const info = document.getElementById('card-img-info');
+      if (info) info.innerHTML='<div class="card-img-meta" style="text-align:center;margin-top:0.5rem">Haz click en una carta</div>';
       selectedRowId=null;
     }
     closeConfirm(); await loadInventory();
@@ -658,7 +847,7 @@ async function confirmDelete() {
 
 // ── Toast ──
 function toast(msg, isError=false) {
-  const el = document.createElement('div');
+  const el=document.createElement('div');
   el.className='toast'+(isError?' error':'');
   el.textContent=msg;
   document.getElementById('toast-container').appendChild(el);
@@ -671,7 +860,11 @@ function toggleSidebar() { document.getElementById('sidebar').classList.toggle('
 // ── Cerrar al click fuera ──
 document.getElementById('card-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeModal(); });
 document.getElementById('confirm-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeConfirm(); });
+document.getElementById('img-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeImgModal(); });
 document.addEventListener('click', e=>{ if(!e.target.closest('.tcgdex-search-wrap')) hideTcgResults(); });
+document.addEventListener('click', e=>{ if(e.target===document.getElementById('sidebar') || (!e.target.closest('#sidebar') && !e.target.closest('.mobile-filter-btn'))) {
+  if(window.innerWidth<=768) document.getElementById('sidebar').classList.remove('open');
+}});
 </script>
 </body>
 </html>
