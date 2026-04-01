@@ -299,7 +299,7 @@
     <button class="btn btn-ghost btn-sm mobile-filter-btn" onclick="toggleSidebar()">⊟ Filtros</button>
     <button class="btn btn-ghost btn-sm lock-btn edit-only" id="lock-btn" onclick="openPwModal()" title="Bloquear edición">🔓</button>
     <button class="btn btn-ghost btn-sm" onclick="reloadInventory()">↺ Sync</button>
-    <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Agregar carta</button>
+    <button class="btn btn-primary btn-sm edit-only" onclick="openAddModal()">+ Agregar carta</button>
   </div>
 </header>
 
@@ -492,7 +492,7 @@ let allCards = [], filteredCards = [];
 let editingId = null, deleteTargetId = null, selectedRowId = null;
 let filterTimer = null, tcgSearchTimer = null;
 let sortCol = null, sortDir = 1; // 1=asc, -1=desc
-let editMode = true; // empieza desbloqueado; cambia a false al bloquear
+let editMode = false; // empieza bloqueado; se desbloquea con contraseña
 
 // Contraseña de edición — cámbiala aquí
 const EDIT_PASSWORD = "pkm1234";
@@ -500,11 +500,11 @@ const EDIT_PASSWORD = "pkm1234";
 document.addEventListener('DOMContentLoaded', () => {
   loadInventory();
   initResizer();
-  // Restaurar estado de bloqueo desde sessionStorage
-  if (sessionStorage.getItem('editMode') === 'false') {
-    editMode = false;
-    applyEditMode();
+  // Restaurar estado desde sessionStorage (por defecto bloqueado)
+  if (sessionStorage.getItem('editMode') === 'true') {
+    editMode = true;
   }
+  applyEditMode();
 });
 
 // ── API ──
@@ -965,7 +965,7 @@ function openPwModal() {
   document.getElementById('pw-modal-title').textContent = isLocked ? 'Desbloquear edición' : 'Bloquear edición';
   document.getElementById('pw-hint').textContent = isLocked
     ? 'Ingresa la contraseña para activar la edición.'
-    : 'Ingresa la contraseña para bloquear la edición.';
+    : 'Ingresa la contraseña para volver al modo lectura.';
   document.getElementById('pw-input').value = '';
   document.getElementById('pw-modal').classList.add('open');
   setTimeout(() => document.getElementById('pw-input').focus(), 100);
