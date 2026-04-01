@@ -2,13 +2,11 @@
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.inventory_controller import InventoryController
-
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
 
 # ------------------------------------------------------------------
@@ -64,10 +62,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def serve_frontend():
-    return FileResponse("index.html")
-
 
 # ------------------------------------------------------------------
 # Helpers
@@ -81,6 +75,13 @@ def df_to_records(df) -> list:
 # ------------------------------------------------------------------
 # Endpoints
 # ------------------------------------------------------------------
+
+
+@app.get("/", summary="Frontend web", include_in_schema=False)
+def serve_frontend():
+    """Sirve el index.html para el frontend web."""
+    return FileResponse("index.html")
+
 
 @app.get("/inventory", summary="Obtener inventario completo enriquecido")
 def get_inventory():

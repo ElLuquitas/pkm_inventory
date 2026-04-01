@@ -1,6 +1,8 @@
 """Almacenamiento en Google Drive con CSV."""
 
 import io
+import json
+import os
 import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -13,19 +15,29 @@ from src.storage_interface import StorageInterface
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
+def _build_credentials():
+    """
+    Construye las credenciales de Google de dos formas posibles:
+    - En producción (Render): lee el JSON desde la variable de entorno GOOGLE_CREDENTIALS_JSON
+    - En local: lee el archivo cuya ruta está en GOOGLE_CREDENTIALS_PATH
+    """
+    json_str = os.getenv('GOOGLE_CREDENTIALS_JSON')
+    if json_str:
+        info = json.loads(json_str)
+        return service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+
+    from src.config import GOOGLE_CREDENTIALS_PATH
+    return service_account.Credentials.from_service_account_file(
+        GOOGLE_CREDENTIALS_PATH, scopes=SCOPES
+    )
+
+
 class GoogleDriveStorage(StorageInterface):
     """Gestiona el inventario como un CSV almacenado en Google Drive."""
 
-    def __init__(self, credentials_path: str, file_id: str):
-        """
-        Args:
-            credentials_path: Ruta al archivo JSON de la cuenta de servicio.
-            file_id: ID del archivo CSV en Google Drive.
-        """
+    def __init__(self, file_id: str):
         self.file_id = file_id
-        creds = service_account.Credentials.from_service_account_file(
-            credentials_path, scopes=SCOPES
-        )
+        creds = _build_credentials()
         self.service = build('drive', 'v3', credentials=creds)
 
     # ------------------------------------------------------------------
@@ -65,15 +77,12 @@ class GoogleDriveStorage(StorageInterface):
     # ------------------------------------------------------------------
 
     def load_inventory(self) -> pd.DataFrame:
-        """Descarga y devuelve el inventario desde Drive."""
         return self._download_csv()
 
     def save_inventory(self, df: pd.DataFrame) -> None:
-        """Sube el DataFrame completo a Drive."""
         self._upload_csv(df)
 
     def add_card(self, card_data: dict) -> int:
-        """Añade una carta al inventario y retorna su nuevo ID."""
         df = self.load_inventory()
         next_id = 1 if df.empty else int(df.index.max()) + 1
         df.loc[next_id] = card_data
@@ -81,7 +90,6 @@ class GoogleDriveStorage(StorageInterface):
         return next_id
 
     def update_card(self, card_id: int, card_data: dict) -> bool:
-        """Actualiza una carta existente. Retorna False si no existe."""
         df = self.load_inventory()
         if card_id not in df.index:
             return False
@@ -90,7 +98,6 @@ class GoogleDriveStorage(StorageInterface):
         return True
 
     def delete_card(self, card_id: int) -> bool:
-        """Elimina una carta. Retorna False si no existe."""
         df = self.load_inventory()
         if card_id not in df.index:
             return False

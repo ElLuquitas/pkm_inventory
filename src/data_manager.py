@@ -1,7 +1,7 @@
 """Manejo de datos con storage configurable."""
 
 import pandas as pd
-from src.config import FIELDNAMES, MODE, GOOGLE_CREDENTIALS_PATH, GOOGLE_FILE_ID
+from src.config import FIELDNAMES, MODE, GOOGLE_FILE_ID
 from src.storage_interface import StorageInterface
 from src.local_storage import LocalStorage
 
@@ -14,10 +14,7 @@ def _build_storage() -> StorageInterface:
     """Instancia el backend de almacenamiento según STORAGE_MODE."""
     if MODE == 'google_drive':
         from src.google_drive_storage import GoogleDriveStorage
-        return GoogleDriveStorage(
-            credentials_path=GOOGLE_CREDENTIALS_PATH,
-            file_id=GOOGLE_FILE_ID,
-        )
+        return GoogleDriveStorage(file_id=GOOGLE_FILE_ID)
     return LocalStorage()
 
 
