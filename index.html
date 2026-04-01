@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PKM Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:       #0e0f11;
+    --surface:  #16181c;
+    --surface2: #1e2026;
+    --border:   #2a2d33;
+    --accent:   #f5c842;
+    --accent2:  #e8834a;
+    --text:     #e8e9eb;
+    --muted:    #6b7280;
+    --danger:   #e05c5c;
+    --success:  #5cb85c;
+    --radius:   6px;
+    --mono:     'Space Mono', monospace;
+    --sans:     'Syne', sans-serif;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 15px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; overflow-x: hidden; }
+  button { cursor: pointer; font-family: inherit; border: none; }
+  input, select { font-family: var(--mono); font-size: 0.85rem; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--border);
+    background: var(--surface); position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-weight: 800; font-size: 1.2rem; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.5rem; }
+  .logo span { color: var(--accent); }
+  .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+  /* ── Layout ── */
+  .layout { display: grid; grid-template-columns: 240px 1fr 200px; min-height: calc(100vh - 55px); }
+  @media (max-width: 1100px) { .layout { grid-template-columns: 240px 1fr; } .card-panel { display: none !important; } }
+  @media (max-width: 768px)  { .layout { grid-template-columns: 1fr; } .sidebar { display: none; } .sidebar.open { display: flex; } }
+
+  /* ── Sidebar filtros ── */
+  .sidebar {
+    background: var(--surface); border-right: 1px solid var(--border);
+    padding: 1.25rem 1rem; display: flex; flex-direction: column; gap: 1rem;
+  }
+  .sidebar-title { font-size: 0.62rem; font-family: var(--mono); letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; padding: 0 0.2rem; }
+  .filter-group { display: flex; flex-direction: column; gap: 0.35rem; }
+  .filter-group label { font-size: 0.67rem; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .filter-group input, .filter-group select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 0.48rem 0.6rem; border-radius: var(--radius); width: 100%; transition: border-color 0.15s;
+  }
+  .filter-group input:focus, .filter-group select:focus { outline: none; border-color: var(--accent); }
+  .filter-group select option { background: var(--surface); }
+
+  /* ── Card image panel ── */
+  .card-panel {
+    background: var(--surface); border-left: 1px solid var(--border);
+    padding: 1.25rem 1rem; display: flex; flex-direction: column; align-items: center;
+    gap: 0.75rem; position: sticky; top: 55px; height: calc(100vh - 55px); overflow-y: auto;
+  }
+  .card-panel-title { font-size: 0.62rem; font-family: var(--mono); letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; align-self: flex-start; }
+  .card-img-wrap {
+    width: 100%; aspect-ratio: 2/3; border-radius: 8px; overflow: hidden;
+    background: var(--surface2); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; position: relative;
+  }
+  .card-img-wrap img { width: 100%; height: 100%; object-fit: contain; transition: opacity 0.25s; }
+  .card-img-placeholder { color: var(--border); font-size: 2.5rem; }
+  .card-img-info { width: 100%; }
+  .card-img-name { font-weight: 700; font-size: 0.85rem; line-height: 1.3; margin-bottom: 0.25rem; }
+  .card-img-meta { font-family: var(--mono); font-size: 0.67rem; color: var(--muted); line-height: 1.7; }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    padding: 0.52rem 1rem; border-radius: var(--radius);
+    font-family: var(--mono); font-size: 0.78rem; font-weight: 700;
+    transition: all 0.15s; letter-spacing: 0.02em;
+  }
+  .btn-primary { background: var(--accent); color: #0e0f11; }
+  .btn-primary:hover { background: #ffd760; }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn-danger:hover { background: var(--danger); color: #fff; }
+  .btn-sm { padding: 0.32rem 0.6rem; font-size: 0.72rem; }
+  .btn-full { width: 100%; }
+
+  /* ── Main ── */
+  .main { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.1rem; overflow-x: auto; }
+
+  /* ── Stats ── */
+  .stats-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.7rem 1rem; display: flex; flex-direction: column; gap: 0.1rem; min-width: 110px; }
+  .stat-value { font-family: var(--mono); font-size: 1.3rem; font-weight: 700; color: var(--accent); line-height: 1; }
+  .stat-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  thead { background: var(--surface); }
+  th { text-align: left; padding: 0.7rem 0.85rem; font-family: var(--mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr { transition: background 0.1s; cursor: pointer; }
+  tbody tr:hover { background: rgba(245,200,66,0.05); }
+  tbody tr.selected { background: rgba(245,200,66,0.09); }
+
+  .badge { display: inline-block; padding: 0.18rem 0.45rem; border-radius: 3px; font-family: var(--mono); font-size: 0.67rem; font-weight: 700; letter-spacing: 0.05em; }
+  .badge-lang  { background: rgba(245,200,66,0.12); color: var(--accent); }
+  .badge-foil  { background: rgba(232,131,74,0.12);  color: var(--accent2); }
+  .badge-cond  { background: rgba(255,255,255,0.06); color: var(--text); }
+  .badge-stamp { background: rgba(92,184,92,0.12);   color: var(--success); }
+
+  .count-ctrl { display: flex; align-items: center; gap: 0.3rem; font-family: var(--mono); font-size: 0.85rem; }
+  .count-btn { width: 22px; height: 22px; border-radius: 3px; background: var(--border); color: var(--text); font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: background 0.1s; border: none; }
+  .count-btn:hover { background: var(--accent); color: #0e0f11; }
+  .row-actions { display: flex; gap: 0.3rem; }
+
+  /* ── Empty / Loading ── */
+  .empty { text-align: center; padding: 4rem 2rem; color: var(--muted); font-family: var(--mono); font-size: 0.85rem; border: 1px dashed var(--border); border-radius: var(--radius); }
+  .empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+  .spinner-wrap { display: flex; align-items: center; justify-content: center; padding: 4rem; gap: 0.75rem; color: var(--muted); font-family: var(--mono); font-size: 0.8rem; }
+  .spinner { width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Modal ── */
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 200; align-items: center; justify-content: center; padding: 1rem; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; width: 100%; padding: 1.6rem; display: flex; flex-direction: column; gap: 1.1rem; animation: slideUp 0.2s ease; }
+  @keyframes slideUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; }
+  .modal-title { font-weight: 800; font-size: 1.05rem; letter-spacing: -0.02em; }
+  .modal-close { background: transparent; color: var(--muted); font-size: 1.2rem; line-height: 1; border: none; padding: 0.2rem 0.4rem; border-radius: 3px; }
+  .modal-close:hover { color: var(--text); }
+  .modal-footer { display: flex; gap: 0.6rem; justify-content: flex-end; }
+
+  /* ── Form ── */
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
+  .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+  .form-group.full { grid-column: 1 / -1; }
+  .form-group label { font-size: 0.66rem; font-family: var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .form-group input, .form-group select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.52rem 0.65rem; border-radius: var(--radius); width: 100%; transition: border-color 0.15s; }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--accent); }
+  .form-group select option { background: var(--surface); }
+
+  /* ── Buscador TCGdex ── */
+  .tcgdex-search-wrap { position: relative; }
+  .tcgdex-results {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
+    background: var(--surface2); border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 var(--radius) var(--radius); max-height: 260px; overflow-y: auto;
+  }
+  .tcgdex-result-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.55rem 0.7rem; cursor: pointer; transition: background 0.1s; border-bottom: 1px solid var(--border); }
+  .tcgdex-result-item:last-child { border-bottom: none; }
+  .tcgdex-result-item:hover { background: rgba(245,200,66,0.07); }
+  .tcgdex-thumb { width: 34px; height: 48px; object-fit: contain; border-radius: 3px; background: var(--border); flex-shrink: 0; }
+  .tcgdex-item-name { font-weight: 700; font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tcgdex-item-meta { font-family: var(--mono); font-size: 0.64rem; color: var(--muted); margin-top: 1px; }
+  .tcgdex-searching { padding: 0.75rem; text-align: center; font-family: var(--mono); font-size: 0.74rem; color: var(--muted); }
+  .divider-text { text-align: center; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
+
+  /* ── Confirm modal ── */
+  .confirm-msg { font-size: 0.88rem; color: var(--muted); line-height: 1.5; }
+
+  /* ── Toast ── */
+  .toast-container { position: fixed; bottom: 1.5rem; right: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 999; }
+  .toast { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); padding: 0.7rem 1rem; border-radius: var(--radius); font-family: var(--mono); font-size: 0.76rem; min-width: 210px; animation: toastIn 0.2s ease; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+  .toast.error { border-left-color: var(--danger); }
+  @keyframes toastIn { from { opacity:0; transform:translateX(14px); } to { opacity:1; transform:translateX(0); } }
+
+  /* ── Mobile ── */
+  .mobile-filter-btn { display: none; }
+  @media (max-width: 768px) { .mobile-filter-btn { display: flex; } .main { padding: 1rem; } td, th { padding: 0.5rem 0.6rem; } }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"><span>◆</span> PKM <span>INVENTORY</span></div>
+  <div class="header-actions">
+    <button class="btn btn-ghost btn-sm mobile-filter-btn" onclick="toggleSidebar()">⊟ Filtros</button>
+    <button class="btn btn-ghost btn-sm" onclick="reloadInventory()">↺ Sync</button>
+    <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Agregar carta</button>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar filtros -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-title">Filtros</div>
+    <div class="filter-group">
+      <label>Nombre</label>
+      <input type="text" id="f-name" placeholder="ej: Charizard" oninput="scheduleFilter()" />
+    </div>
+    <div class="filter-group">
+      <label>Edición</label>
+      <select id="f-set" onchange="applyFilters()"><option value="">Todas</option></select>
+    </div>
+    <div class="filter-group">
+      <label>Idioma</label>
+      <select id="f-language" onchange="applyFilters()">
+        <option value="">Todos</option>
+        <option>EN</option><option>ES</option><option>LA</option><option>PT</option><option>JP</option><option>KR</option><option>CN</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Brillo</label>
+      <select id="f-foil" onchange="applyFilters()">
+        <option value="">Todos</option>
+        <option>Normal</option><option>Holo</option><option>Reverse Holo</option><option>Full Art</option><option>Gold Rare</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Condición</label>
+      <select id="f-condition" onchange="applyFilters()">
+        <option value="">Todas</option>
+        <option>NM</option><option>LP</option><option>MP</option><option>HP</option><option>DMG</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label>Sello</label>
+      <select id="f-stamp" onchange="applyFilters()">
+        <option value="">Todos</option>
+        <option>None</option><option>Pokemon Center</option><option>Prerelease</option><option>Staff</option>
+        <option>World Championship</option><option>1st Edition</option><option>Shadowless</option><option>League Promo</option><option>Halloween</option>
+      </select>
+    </div>
+    <button class="btn btn-ghost btn-full" onclick="clearFilters()">✕ Limpiar</button>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Registros</div></div>
+      <div class="stat"><div class="stat-value" id="stat-cards">—</div><div class="stat-label">Cartas totales</div></div>
+      <div class="stat"><div class="stat-value" id="stat-sets">—</div><div class="stat-label">Ediciones</div></div>
+      <div class="stat"><div class="stat-value" id="stat-showing">—</div><div class="stat-label">Mostrando</div></div>
+    </div>
+    <div id="table-container"></div>
+  </main>
+
+  <!-- Panel imagen -->
+  <aside class="card-panel" id="card-panel">
+    <div class="card-panel-title">Vista previa</div>
+    <div class="card-img-wrap" id="card-img-wrap">
+      <div class="card-img-placeholder">◇</div>
+    </div>
+    <div class="card-img-info" id="card-img-info">
+      <div class="card-img-meta" style="text-align:center;margin-top:0.5rem">Haz click en una carta</div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- Modal agregar / editar -->
+<div class="modal-backdrop" id="card-modal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Agregar carta</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+
+    <div id="tcgdex-search-section">
+      <div class="form-group">
+        <label>Buscar carta por nombre</label>
+        <div class="tcgdex-search-wrap">
+          <input type="text" id="tcgdex-query" placeholder="Escribe el nombre de la carta…" oninput="scheduleTcgSearch()" autocomplete="off" />
+          <div class="tcgdex-results" id="tcgdex-results" style="display:none"></div>
+        </div>
+      </div>
+      <div class="divider-text">— o ingresa el ID manualmente —</div>
+    </div>
+
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>ID Global <span style="color:var(--accent)">*</span></label>
+        <input type="text" id="m-tcg-id" placeholder="ej: sv01-001" />
+      </div>
+      <div class="form-group">
+        <label>Cantidad <span style="color:var(--accent)">*</span></label>
+        <input type="number" id="m-count" min="1" value="1" />
+      </div>
+      <div class="form-group">
+        <label>Idioma <span style="color:var(--accent)">*</span></label>
+        <select id="m-language">
+          <option>EN</option><option>ES</option><option>LA</option><option>PT</option><option>JP</option><option>KR</option><option>CN</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Brillo <span style="color:var(--accent)">*</span></label>
+        <select id="m-foil">
+          <option>Normal</option><option>Holo</option><option>Reverse Holo</option><option>Full Art</option><option>Gold Rare</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Condición <span style="color:var(--accent)">*</span></label>
+        <select id="m-condition">
+          <option>NM</option><option>LP</option><option>MP</option><option>HP</option><option>DMG</option>
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Sello</label>
+        <select id="m-stamp">
+          <option>None</option><option>Pokemon Center</option><option>Prerelease</option><option>Staff</option>
+          <option>World Championship</option><option>1st Edition</option><option>Shadowless</option><option>League Promo</option><option>Halloween</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="submitCard()" id="modal-submit-btn">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal confirmar eliminar -->
+<div class="modal-backdrop" id="confirm-modal">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-header">
+      <div class="modal-title">Confirmar eliminación</div>
+      <button class="modal-close" onclick="closeConfirm()">✕</button>
+    </div>
+    <p class="confirm-msg" id="confirm-msg">¿Seguro que quieres eliminar esta carta?</p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeConfirm()">Cancelar</button>
+      <button class="btn btn-danger" onclick="confirmDelete()">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+const API_BASE = 'http://localhost:8000'; // Cambiar al desplegar en Render
+
+let allCards = [], filteredCards = [];
+let editingId = null, deleteTargetId = null, selectedRowId = null;
+let filterTimer = null, tcgSearchTimer = null;
+
+document.addEventListener('DOMContentLoaded', loadInventory);
+
+// ── API helper ──
+async function api(method, path, body=null) {
+  const opts = { method, headers: {'Content-Type':'application/json'} };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API_BASE + path, opts);
+  if (!res.ok) { const e = await res.json().catch(()=>({detail:res.statusText})); throw new Error(e.detail||res.statusText); }
+  return res.json();
+}
+
+// ── Cargar ──
+async function loadInventory() {
+  renderLoading();
+  try {
+    allCards = await api('GET', '/inventory');
+    populateSetFilter(); updateStats(allCards); applyFilters();
+  } catch(e) { renderError(e.message); }
+}
+
+async function reloadInventory() {
+  renderLoading();
+  try {
+    await api('POST', '/reload');
+    allCards = await api('GET', '/inventory');
+    populateSetFilter(); updateStats(allCards); applyFilters();
+    toast('Inventario sincronizado ↺');
+  } catch(e) { toast(e.message, true); }
+}
+
+// ── Filtros ──
+function scheduleFilter() { clearTimeout(filterTimer); filterTimer = setTimeout(applyFilters, 280); }
+
+function applyFilters() {
+  const name      = document.getElementById('f-name').value.trim().toLowerCase();
+  const set       = document.getElementById('f-set').value;
+  const language  = document.getElementById('f-language').value;
+  const foil      = document.getElementById('f-foil').value;
+  const condition = document.getElementById('f-condition').value;
+  const stamp     = document.getElementById('f-stamp').value;
+
+  filteredCards = allCards.filter(c => {
+    if (name && !((c.card_name||'').toLowerCase().includes(name)||(c.tcg_card_id||'').toLowerCase().includes(name))) return false;
+    if (set && (c.edition_name||'') !== set) return false;
+    if (language && (c.language||'').toUpperCase() !== language) return false;
+    if (foil && (c.foil_type||'') !== foil) return false;
+    if (condition && (c.condition||'').toUpperCase() !== condition.toUpperCase()) return false;
+    if (stamp) {
+      const s = (c.stamp||'None');
+      if (stamp.toLowerCase()==='none') { if (!['','none',null,undefined].includes(s?.toLowerCase())) return false; }
+      else if (s !== stamp) return false;
+    }
+    return true;
+  });
+  document.getElementById('stat-showing').textContent = filteredCards.length;
+  renderTable(filteredCards);
+}
+
+function clearFilters() {
+  ['f-name','f-set','f-language','f-foil','f-condition','f-stamp'].forEach(id=>{document.getElementById(id).value='';});
+  applyFilters();
+}
+
+function populateSetFilter() {
+  const sets = [...new Set(allCards.map(c=>c.edition_name).filter(Boolean))].sort();
+  const sel = document.getElementById('f-set'), cur = sel.value;
+  sel.innerHTML = '<option value="">Todas</option>' + sets.map(s=>`<option${s===cur?' selected':''}>${s}</option>`).join('');
+}
+
+// ── Stats ──
+function updateStats(cards) {
+  document.getElementById('stat-total').textContent  = cards.length;
+  document.getElementById('stat-cards').textContent  = cards.reduce((s,c)=>s+(c.count||0),0);
+  document.getElementById('stat-sets').textContent   = new Set(cards.map(c=>c.edition_name).filter(Boolean)).size;
+  document.getElementById('stat-showing').textContent = cards.length;
+}
+
+// ── Render ──
+function renderLoading() {
+  document.getElementById('table-container').innerHTML =
+    `<div class="spinner-wrap"><div class="spinner"></div> Cargando inventario…</div>`;
+}
+function renderError(msg) {
+  document.getElementById('table-container').innerHTML =
+    `<div class="empty"><div class="empty-icon">⚠</div>${msg}<br><br>
+     <button class="btn btn-ghost btn-sm" onclick="loadInventory()">Reintentar</button></div>`;
+}
+function esc(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+
+function renderTable(cards) {
+  if (!cards.length) {
+    document.getElementById('table-container').innerHTML =
+      `<div class="empty"><div class="empty-icon">◇</div>No se encontraron cartas.</div>`;
+    return;
+  }
+  const rows = cards.map(c=>`
+    <tr data-id="${c.id}" onclick="selectRow(${c.id},'${esc(c.tcg_card_id)}','${esc(c.card_name||'')}','${esc(c.edition_name||'')}')">
+      <td style="font-family:var(--mono);font-size:0.72rem;color:var(--muted)">${c.id}</td>
+      <td>
+        <div style="font-weight:600;font-size:0.86rem">${c.card_name||'—'}</div>
+        <div style="font-family:var(--mono);font-size:0.66rem;color:var(--muted);margin-top:1px">${c.tcg_card_id}</div>
+      </td>
+      <td style="color:var(--muted);font-size:0.78rem">${c.edition_name||'—'}</td>
+      <td>
+        <div class="count-ctrl">
+          <button class="count-btn" onclick="event.stopPropagation();changeCount(${c.id},-1)">−</button>
+          <span style="min-width:1.4rem;text-align:center">${c.count}</span>
+          <button class="count-btn" onclick="event.stopPropagation();changeCount(${c.id},+1)">+</button>
+        </div>
+      </td>
+      <td><span class="badge badge-lang">${c.language||'—'}</span></td>
+      <td><span class="badge badge-foil">${c.foil_type||'—'}</span></td>
+      <td><span class="badge badge-cond">${c.condition||'—'}</span></td>
+      <td><span class="badge badge-stamp">${c.stamp||'None'}</span></td>
+      <td>
+        <div class="row-actions" onclick="event.stopPropagation()">
+          <button class="btn btn-ghost btn-sm" onclick="openEditModal(${c.id})">✎</button>
+          <button class="btn btn-danger btn-sm" onclick="askDelete(${c.id},'${esc(c.card_name||c.tcg_card_id)}')">✕</button>
+        </div>
+      </td>
+    </tr>`).join('');
+
+  document.getElementById('table-container').innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>#</th><th>Carta</th><th>Edición</th><th>Cantidad</th>
+        <th>Idioma</th><th>Brillo</th><th>Cond.</th><th>Sello</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+
+  // Restaurar selección visual si corresponde
+  if (selectedRowId) {
+    const tr = document.querySelector(`tr[data-id="${selectedRowId}"]`);
+    if (tr) tr.classList.add('selected');
+  }
+}
+
+// ── Selección fila → panel imagen ──
+function selectRow(id, tcgId, cardName, editionName) {
+  document.querySelectorAll('tbody tr').forEach(r=>r.classList.remove('selected'));
+  const tr = document.querySelector(`tr[data-id="${id}"]`);
+  if (tr) tr.classList.add('selected');
+  selectedRowId = id;
+
+  const wrap = document.getElementById('card-img-wrap');
+  wrap.innerHTML = `<div class="spinner"></div>`;
+
+  fetch(`${API_BASE}/card-image/${tcgId}`)
+    .then(r=>r.json())
+    .then(data=>{
+      const img = new Image();
+      img.src = data.image_url;
+      img.style.opacity = '0';
+      img.onload = () => {
+        wrap.innerHTML = '';
+        wrap.appendChild(img);
+        requestAnimationFrame(()=>{ img.style.opacity='1'; });
+      };
+      img.onerror = () => {
+        wrap.innerHTML = `<div style="font-family:var(--mono);font-size:0.7rem;color:var(--muted);text-align:center;padding:1rem">Sin imagen disponible</div>`;
+      };
+    })
+    .catch(()=>{ wrap.innerHTML = `<div class="card-img-placeholder">◇</div>`; });
+
+  document.getElementById('card-img-info').innerHTML = `
+    <div class="card-img-name">${cardName||tcgId}</div>
+    <div class="card-img-meta">${editionName||''}<br/><span style="color:var(--muted)">${tcgId}</span></div>`;
+}
+
+// ── Count +/− ──
+async function changeCount(id, delta) {
+  try {
+    if (delta>0) await api('POST',`/cards/${id}/increment`);
+    else {
+      const res = await api('POST',`/cards/${id}/decrement`);
+      if (res.reached_zero) toast(`Carta #${id} llegó a 0 — considera eliminarla.`);
+    }
+    const card = allCards.find(c=>c.id===id);
+    if (card) card.count = Math.max(0, card.count+delta);
+    applyFilters();
+  } catch(e) { toast(e.message, true); }
+}
+
+// ── Buscador TCGdex ──
+function scheduleTcgSearch() {
+  clearTimeout(tcgSearchTimer);
+  const q = document.getElementById('tcgdex-query').value.trim();
+  if (q.length < 2) { hideTcgResults(); return; }
+  const el = document.getElementById('tcgdex-results');
+  el.style.display = 'block';
+  el.innerHTML = '<div class="tcgdex-searching">Buscando…</div>';
+  tcgSearchTimer = setTimeout(()=>doTcgSearch(q), 450);
+}
+
+async function doTcgSearch(q) {
+  try {
+    const results = await api('GET', `/tcgdex/search?q=${encodeURIComponent(q)}`);
+    const el = document.getElementById('tcgdex-results');
+    if (!results.length) { el.innerHTML = '<div class="tcgdex-searching">Sin resultados.</div>'; return; }
+    el.innerHTML = results.map(r=>`
+      <div class="tcgdex-result-item" onclick="selectTcgCard('${esc(r.id)}','${esc(r.name)}')">
+        <img class="tcgdex-thumb" src="${r.image_url}" alt="${r.name}" onerror="this.style.visibility='hidden'" loading="lazy" />
+        <div>
+          <div class="tcgdex-item-name">${r.name}</div>
+          <div class="tcgdex-item-meta">${r.set_name} · ${r.id}</div>
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    document.getElementById('tcgdex-results').innerHTML = `<div class="tcgdex-searching">Error: ${e.message}</div>`;
+  }
+}
+
+function selectTcgCard(id, name) {
+  document.getElementById('m-tcg-id').value = id;
+  document.getElementById('tcgdex-query').value = `${name}  (${id})`;
+  hideTcgResults();
+}
+
+function hideTcgResults() {
+  const el = document.getElementById('tcgdex-results');
+  if (el) el.style.display = 'none';
+}
+
+// ── Modal ──
+function openAddModal() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = 'Agregar carta';
+  document.getElementById('modal-submit-btn').textContent = 'Agregar';
+  document.getElementById('tcgdex-search-section').style.display = '';
+  clearForm();
+  document.getElementById('card-modal').classList.add('open');
+}
+
+function openEditModal(id) {
+  const card = allCards.find(c=>c.id===id);
+  if (!card) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = 'Editar carta';
+  document.getElementById('modal-submit-btn').textContent = 'Guardar cambios';
+  document.getElementById('tcgdex-search-section').style.display = 'none';
+  document.getElementById('m-tcg-id').value    = card.tcg_card_id||'';
+  document.getElementById('m-count').value     = card.count||1;
+  document.getElementById('m-language').value  = card.language||'EN';
+  document.getElementById('m-foil').value      = card.foil_type||'Normal';
+  document.getElementById('m-condition').value = card.condition||'NM';
+  document.getElementById('m-stamp').value     = card.stamp||'None';
+  document.getElementById('card-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('card-modal').classList.remove('open');
+  hideTcgResults(); editingId = null;
+}
+
+function clearForm() {
+  ['tcgdex-query','m-tcg-id'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('m-count').value=1;
+  document.getElementById('m-language').value='EN';
+  document.getElementById('m-foil').value='Normal';
+  document.getElementById('m-condition').value='NM';
+  document.getElementById('m-stamp').value='None';
+}
+
+async function submitCard() {
+  const body = {
+    tcg_card_id: document.getElementById('m-tcg-id').value.trim(),
+    count:       parseInt(document.getElementById('m-count').value),
+    language:    document.getElementById('m-language').value,
+    foil_type:   document.getElementById('m-foil').value,
+    condition:   document.getElementById('m-condition').value,
+    stamp:       document.getElementById('m-stamp').value,
+  };
+  if (!body.tcg_card_id) { toast('El ID Global es obligatorio.', true); return; }
+  if (!body.count||body.count<1) { toast('La cantidad debe ser mayor a 0.', true); return; }
+
+  const btn = document.getElementById('modal-submit-btn');
+  btn.textContent='…'; btn.disabled=true;
+  try {
+    if (editingId) { await api('PUT',`/cards/${editingId}`,body); toast('Carta actualizada ✓'); }
+    else           { await api('POST','/cards',body); toast('Carta agregada ✓'); }
+    closeModal(); await loadInventory();
+  } catch(e) { toast(e.message, true); }
+  finally { btn.disabled=false; btn.textContent=editingId?'Guardar cambios':'Agregar'; }
+}
+
+// ── Eliminar ──
+function askDelete(id, name) {
+  deleteTargetId = id;
+  document.getElementById('confirm-msg').textContent = `¿Seguro que quieres eliminar "${name}"? Esta acción no se puede deshacer.`;
+  document.getElementById('confirm-modal').classList.add('open');
+}
+function closeConfirm() { document.getElementById('confirm-modal').classList.remove('open'); deleteTargetId=null; }
+async function confirmDelete() {
+  if (!deleteTargetId) return;
+  try {
+    await api('DELETE',`/cards/${deleteTargetId}`);
+    toast('Carta eliminada.');
+    if (selectedRowId===deleteTargetId) {
+      document.getElementById('card-img-wrap').innerHTML='<div class="card-img-placeholder">◇</div>';
+      document.getElementById('card-img-info').innerHTML='<div class="card-img-meta" style="text-align:center;margin-top:0.5rem">Haz click en una carta</div>';
+      selectedRowId=null;
+    }
+    closeConfirm(); await loadInventory();
+  } catch(e) { toast(e.message, true); }
+}
+
+// ── Toast ──
+function toast(msg, isError=false) {
+  const el = document.createElement('div');
+  el.className='toast'+(isError?' error':'');
+  el.textContent=msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(()=>el.remove(), 3500);
+}
+
+// ── Sidebar móvil ──
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+
+// ── Cerrar al click fuera ──
+document.getElementById('card-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeModal(); });
+document.getElementById('confirm-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeConfirm(); });
+document.addEventListener('click', e=>{ if(!e.target.closest('.tcgdex-search-wrap')) hideTcgResults(); });
+</script>
+</body>
+</html>

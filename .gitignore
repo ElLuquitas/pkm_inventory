@@ -1,0 +1,22 @@
+# Credenciales - NUNCA subir a GitHub
+credentials.json
+.env
+
+# Datos locales
+data/inventory.csv
+data/card_cache.json
+data/sets_cache.json
+useless/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# IDEs
+.vscode/
+.idea/

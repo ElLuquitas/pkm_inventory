@@ -1,0 +1,44 @@
+fastapi==0.135.2
+uvicorn==0.42.0
+starlette==1.0.0
+pydantic==2.12.5
+pydantic_core==2.41.5
+annotated-types==0.7.0
+typing_extensions==4.15.0
+
+# Google Drive
+google-api-python-client==2.193.0
+google-auth==2.49.1
+google-auth-httplib2==0.3.1
+google-api-core==2.30.1
+googleapis-common-protos==1.73.1
+httplib2==0.31.2
+uritemplate==4.2.0
+pyasn1==0.6.3
+pyasn1_modules==0.4.2
+rsa==4.9
+cachetools==6.2.2
+
+# TCGdex SDK
+tcgdex-sdk==2.2.1
+httpx==0.28.1
+httpcore==1.0.9
+h11==0.16.0
+anyio==4.12.0
+
+# Datos
+pandas==2.3.3
+numpy==2.2.6
+python-dateutil==2.9.0.post0
+pytz==2025.2
+tzdata==2025.2
+six==1.17.0
+
+# Utilidades
+python-dotenv==1.2.1
+requests==2.32.5
+certifi==2025.11.12
+charset-normalizer==3.4.4
+idna==3.11
+urllib3==2.5.0
+dacite==1.9.2
