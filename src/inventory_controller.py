@@ -60,6 +60,9 @@ class InventoryController:
         enriched['image_url'] = enriched['tcg_card_id'].apply(
             lambda x: (self.card_cache.get(x) or {}).get('image_url')
         )
+        enriched['regulation_mark'] = enriched['tcg_card_id'].apply(
+            lambda x: (self.card_cache.get(x) or {}).get('regulation_mark')
+        )
 
         self.enriched_df = enriched
         return enriched
@@ -161,10 +164,11 @@ class InventoryController:
                 if not isinstance(card, Exception):
                     image_base = getattr(card, 'image', None)
                     new_data[tcg_id] = {
-                        'name':      getattr(card, 'name', 'N/A'),
-                        'set_name':  getattr(card.set, 'name', 'N/A') if hasattr(card, 'set') else 'N/A',
-                        'local_id':  getattr(card, 'localId', 'N/A'),
-                        'image_url': f"{image_base}/high.png" if image_base else None,
+                        'name':            getattr(card, 'name', 'N/A'),
+                        'set_name':        getattr(card.set, 'name', 'N/A') if hasattr(card, 'set') else 'N/A',
+                        'local_id':        getattr(card, 'localId', 'N/A'),
+                        'image_url':       f"{image_base}/high.png" if image_base else None,
+                        'regulation_mark': getattr(card, 'regulationMark', None),
                     }
 
         if new_data:

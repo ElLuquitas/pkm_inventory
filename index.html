@@ -240,6 +240,59 @@
   .divider-text { text-align: center; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
 
 
+  /* ── Toggle de vista ── */
+  .view-toggle { display: flex; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .view-toggle-btn { background: transparent; color: var(--muted); border: none; padding: 0.3rem 0.65rem; font-family: var(--mono); font-size: 0.72rem; transition: all 0.15s; }
+  .view-toggle-btn.active { background: var(--accent); color: #0e0f11; font-weight: 700; }
+  .view-toggle-btn:hover:not(.active) { color: var(--text); background: var(--surface2); }
+
+  /* ── Árbol jerárquico ── */
+  .tree-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+  /* Nivel 1: Nombre */
+  .tree-l1 { border-bottom: 1px solid var(--border); }
+  .tree-l1:last-child { border-bottom: none; }
+  .tree-l1-header {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.7rem 1rem; cursor: pointer;
+    background: var(--surface); transition: background 0.12s;
+    user-select: none;
+  }
+  .tree-l1-header:hover { background: var(--surface2); }
+  .tree-l1-header.open { background: rgba(245,200,66,0.06); }
+  .tree-chevron { font-size: 0.65rem; color: var(--muted); transition: transform 0.18s; flex-shrink: 0; width: 10px; }
+  .tree-chevron.open { transform: rotate(90deg); }
+  .tree-l1-name { font-weight: 700; font-size: 0.9rem; flex: 1; }
+  .tree-l1-count { font-family: var(--mono); font-size: 0.72rem; color: var(--accent); background: rgba(245,200,66,0.1); padding: 0.1rem 0.45rem; border-radius: 10px; }
+  .tree-l1-body { display: none; border-top: 1px solid var(--border); }
+  .tree-l1-body.open { display: block; }
+
+  /* Nivel 2: Edición */
+  .tree-l2 { border-bottom: 1px solid var(--border); }
+  .tree-l2:last-child { border-bottom: none; }
+  .tree-l2-header {
+    display: flex; align-items: center; gap: 0.55rem;
+    padding: 0.55rem 1rem 0.55rem 2.2rem; cursor: pointer;
+    background: var(--surface2); transition: background 0.12s;
+    user-select: none;
+  }
+  .tree-l2-header:hover { background: rgba(245,200,66,0.04); }
+  .tree-l2-header.open { background: rgba(245,200,66,0.05); }
+  .tree-l2-name { font-size: 0.82rem; color: var(--muted); flex: 1; font-family: var(--mono); font-size: 0.76rem; }
+  .tree-l2-reg { font-family: var(--mono); font-size: 0.62rem; color: #c4a8ff; background: rgba(120,80,220,0.14); padding: 0.08rem 0.35rem; border-radius: 3px; }
+  .tree-l2-count { font-family: var(--mono); font-size: 0.7rem; color: var(--accent2); background: rgba(232,131,74,0.1); padding: 0.08rem 0.4rem; border-radius: 10px; }
+  .tree-l2-body { display: none; }
+  .tree-l2-body.open { display: block; }
+
+  /* Nivel 3: filas de cartas */
+  .tree-l3-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  .tree-l3-table th { text-align: left; padding: 0.45rem 0.85rem; font-family: var(--mono); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); background: var(--bg); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .tree-l3-table td { padding: 0.55rem 0.85rem; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+  .tree-l3-table tr:last-child td { border-bottom: none; }
+  .tree-l3-table tbody tr { transition: background 0.1s; cursor: pointer; }
+  .tree-l3-table tbody tr:hover { background: rgba(245,200,66,0.05); }
+  .tree-l3-table tbody tr.selected { background: rgba(245,200,66,0.09); }
+
   /* ── Columnas ordenables ── */
   th.sortable { cursor: pointer; user-select: none; }
   th.sortable:hover { color: var(--text); }
@@ -298,6 +351,10 @@
   <div class="header-actions">
     <button class="btn btn-ghost btn-sm mobile-filter-btn" onclick="toggleSidebar()">⊟ Filtros</button>
     <button class="btn btn-ghost btn-sm lock-btn" id="lock-btn" onclick="openPwModal()" title="Bloquear edición">🔓</button>
+    <div class="view-toggle">
+      <button class="view-toggle-btn active" id="toggle-table" onclick="setView('table')" title="Vista tabla">⊞ Tabla</button>
+      <button class="view-toggle-btn" id="toggle-tree" onclick="setView('tree')" title="Vista árbol">⊟ Árbol</button>
+    </div>
     <button class="btn btn-ghost btn-sm" onclick="reloadInventory()">↺ Sync</button>
     <button class="btn btn-primary btn-sm edit-only" onclick="openAddModal()">+ Agregar carta</button>
   </div>
@@ -489,7 +546,7 @@
 const API_BASE = '';
 
 let allCards = [], filteredCards = [];
-let editingId = null, deleteTargetId = null, selectedRowId = null;
+let editingId = null, deleteTargetId = null, selectedRowId = null, selectedSetPreview = null;
 let filterTimer = null, tcgSearchTimer = null;
 let sortCol = null, sortDir = 1; // 1=asc, -1=desc
 let editMode = false; // empieza bloqueado; se desbloquea con contraseña
@@ -618,7 +675,7 @@ function applyFilters() {
     return true;
   });
   document.getElementById('stat-showing').textContent = filteredCards.length;
-  renderTable(filteredCards);
+  renderCurrent();
 }
 
 function clearFilters() {
@@ -660,7 +717,7 @@ function sortCards(col) {
     sortCol = col;
     sortDir = 1;
   }
-  renderTable(filteredCards);
+  renderCurrent();
 }
 
 function getSortedCards(cards) {
@@ -739,6 +796,152 @@ function renderTable(cards) {
   }
 }
 
+// ── Toggle de vista ──
+let currentView = 'table'; // 'table' | 'tree'
+// Estado de expansión persistente en la sesión
+const treeOpenL1 = new Set();
+const treeOpenL2 = new Set();
+
+function setView(view) {
+  currentView = view;
+  document.getElementById('toggle-table').classList.toggle('active', view === 'table');
+  document.getElementById('toggle-tree').classList.toggle('active', view === 'tree');
+  // Ordenación solo tiene sentido en tabla
+  document.querySelectorAll('th.sortable').forEach(th => th.style.pointerEvents = view === 'table' ? '' : 'none');
+  renderCurrent();
+}
+
+function renderCurrent() {
+  if (currentView === 'tree') renderTree(filteredCards);
+  else renderTable(filteredCards);
+}
+
+// ── Vista árbol ──
+function renderTree(cards) {
+  if (!cards.length) {
+    document.getElementById('table-container').innerHTML =
+      `<div class="empty"><div class="empty-icon">◇</div>No se encontraron cartas.</div>`;
+    return;
+  }
+
+  // Auto-expandir el nodo L1 si sólo hay uno en los resultados filtrados
+  const uniqueNames = [...new Set(cards.map(c => c.card_name || c.tcg_card_id || '—'))];
+  if (uniqueNames.length === 1) treeOpenL1.add(uniqueNames[0]);
+
+  // Agrupar: L1 = card_name, L2 = edition_name
+  const byName = new Map();
+  for (const c of cards) {
+    const name = c.card_name || c.tcg_card_id || '—';
+    const edition = c.edition_name || '—';
+    if (!byName.has(name)) byName.set(name, { total: 0, editions: new Map() });
+    const nameNode = byName.get(name);
+    nameNode.total += (c.count || 0);
+    if (!nameNode.editions.has(edition)) nameNode.editions.set(edition, { total: 0, cards: [], reg: c.regulation_mark || null });
+    const edNode = nameNode.editions.get(edition);
+    edNode.total += (c.count || 0);
+    edNode.cards.push(c);
+  }
+
+  // Ordenar L1 alfabéticamente
+  const sortedNames = [...byName.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  const html = sortedNames.map(([name, nameNode]) => {
+    const l1Open = treeOpenL1.has(name);
+    const editionsHtml = [...nameNode.editions.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([edition, edNode]) => {
+        const l2Key = `${name}||${edition}`;
+        const l2Open = treeOpenL2.has(l2Key);
+        const rowsHtml = edNode.cards.map(c => `
+          <tr data-id="${c.id}"
+              onclick="selectRow(${c.id},'${esc(c.tcg_card_id)}','${esc(c.card_name||'')}','${esc(c.edition_name||'')}','${esc(c.image_url||'')}')">
+            <td style="font-family:var(--mono);font-size:0.69rem;color:var(--muted)">${c.id}</td>
+            <td><div class="count-ctrl">
+              <button class="count-btn edit-only" onclick="event.stopPropagation();changeCount(${c.id},-1)">−</button>
+              <span style="min-width:1.4rem;text-align:center">${c.count}</span>
+              <button class="count-btn edit-only" onclick="event.stopPropagation();changeCount(${c.id},+1)">+</button>
+            </div></td>
+            <td><span class="badge badge-lang">${c.language||'—'}</span></td>
+            <td><span class="badge badge-foil">${c.foil_type||'—'}</span></td>
+            <td><span class="badge badge-cond">${c.condition||'—'}</span></td>
+            <td><span class="badge badge-stamp">${c.stamp||'None'}</span></td>
+            <td style="font-family:var(--mono);font-size:0.69rem;color:var(--muted)">${c.tcg_card_id}</td>
+            <td class="edit-only"><div class="row-actions" onclick="event.stopPropagation()">
+              <button class="btn btn-ghost btn-sm" onclick="openEditModal(${c.id})">✎</button>
+              <button class="btn btn-danger btn-sm" onclick="askDelete(${c.id},'${esc(c.card_name||c.tcg_card_id)}')">✕</button>
+            </div></td>
+          </tr>`).join('');
+
+        const firstCard = edNode.cards[0];
+        return `
+          <div class="tree-l2">
+            <div class="tree-l2-header${l2Open?' open':''}"
+                 onclick="toggleL2('${esc(name)}','${esc(edition)}',${firstCard.id},'${esc(firstCard.tcg_card_id)}','${esc(firstCard.card_name||'')}','${esc(edition)}','${esc(firstCard.image_url||'')}')">
+              <span class="tree-chevron${l2Open?' open':''}">▶</span>
+              <span class="tree-l2-name">${edition}</span>
+              ${edNode.reg ? `<span class="tree-l2-reg">${edNode.reg}</span>` : ''}
+              <span class="tree-l2-count">${edNode.total}</span>
+            </div>
+            <div class="tree-l2-body${l2Open?' open':''}">
+              <table class="tree-l3-table">
+                <thead><tr>
+                  <th>#</th><th>Cantidad</th><th>Idioma</th><th>Brillo</th><th>Cond.</th><th>Sello</th><th>ID Global</th><th class="edit-only"></th>
+                </tr></thead>
+                <tbody>${rowsHtml}</tbody>
+              </table>
+            </div>
+          </div>`;
+      }).join('');
+
+    return `
+      <div class="tree-l1">
+        <div class="tree-l1-header${l1Open?' open':''}" onclick="toggleL1('${esc(name)}')">
+          <span class="tree-chevron${l1Open?' open':''}">▶</span>
+          <span class="tree-l1-name">${name}</span>
+          <span class="tree-l1-count">${nameNode.total}</span>
+        </div>
+        <div class="tree-l1-body${l1Open?' open':''}">
+          ${editionsHtml}
+        </div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('table-container').innerHTML = `<div class="tree-wrap">${html}</div>`;
+
+  // Restaurar carta seleccionada
+  if (selectedRowId) {
+    const tr = document.querySelector(`tr[data-id="${selectedRowId}"]`);
+    if (tr) tr.classList.add('selected');
+  }
+}
+
+function toggleL1(name) {
+  if (treeOpenL1.has(name)) treeOpenL1.delete(name);
+  else treeOpenL1.add(name);
+  renderTree(filteredCards);
+}
+
+function toggleL2(name, edition, cardId, tcgId, cardName, editionName, imageUrl) {
+  const key = `${name}||${edition}`;
+  if (treeOpenL2.has(key)) treeOpenL2.delete(key);
+  else treeOpenL2.add(key);
+
+  // Mostrar imagen de la carta al expandir (todas comparten la misma imagen en L2)
+  if (treeOpenL2.has(key)) {
+    if (isMobile()) {
+      openImgModal(tcgId, cardName, editionName, imageUrl);
+    } else {
+      loadCardImage(tcgId, cardName, editionName, imageUrl,
+        document.getElementById('card-img-wrap'),
+        document.getElementById('card-img-info'));
+    }
+    // Marcar visualmente el L2 como "activo" para imagen (sin afectar selectedRowId de filas)
+    selectedSetPreview = key;
+  }
+
+  renderTree(filteredCards);
+}
+
 // ── Detección móvil ──
 function isMobile() { return window.innerWidth <= 1100; }
 
@@ -748,6 +951,7 @@ function selectRow(id, tcgId, cardName, editionName, imageUrl) {
   const tr = document.querySelector(`tr[data-id="${id}"]`);
   if (tr) tr.classList.add('selected');
   selectedRowId = id;
+  selectedSetPreview = null; // la fila L3 toma precedencia sobre el preview de L2
 
   if (isMobile()) {
     openImgModal(tcgId, cardName, editionName, imageUrl);

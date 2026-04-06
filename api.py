@@ -215,7 +215,56 @@ async def tcgdex_search(q: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/card-image/{tcg_card_id}", summary="URL de imagen de una carta")
+@app.get("/tcgdex/sets", summary="Buscar ediciones en TCGdex por nombre")
+async def tcgdex_sets_search(q: str):
+    """
+    Busca ediciones en TCGdex cuyo nombre contenga la cadena dada.
+    Retorna id, nombre e imagen de la edición.
+    """
+    if not q or len(q) < 2:
+        return []
+    try:
+        from tcgdexsdk import Query
+        sets = await controller.api_service.tcgdex.set.list(
+            Query().contains("name", q)
+        )
+        if not sets:
+            return []
+        results = []
+        for s in sets[:20]:
+            logo = getattr(s, 'logo', None)
+            results.append({
+                "id":    getattr(s, 'id', ''),
+                "name":  getattr(s, 'name', ''),
+                "logo":  f"{logo}.png" if logo else None,
+            })
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/tcgdex/set/{set_id}/card/{number}", summary="Obtener carta por edición y número")
+async def tcgdex_card_by_set_number(set_id: str, number: str):
+    """
+    Dado el ID de edición y el número local de carta, devuelve el tcg_card_id
+    y los datos básicos de la carta (nombre, imagen) sin necesidad de confirmación visual.
+    """
+    try:
+        # El número se normaliza: "1" → "1", "001" → "1" (TCGdex usa el número sin ceros)
+        number_normalized = str(int(number)) if number.isdigit() else number
+        tcg_id = f"{set_id}-{number_normalized}"
+        card_data = await controller.api_service.tcgdex.card.get(tcg_id)
+        image_base = getattr(card_data, 'image', None)
+        return {
+            "id":        tcg_id,
+            "name":      getattr(card_data, 'name', 'N/A'),
+            "set_name":  getattr(card_data.set, 'name', set_id) if hasattr(card_data, 'set') else set_id,
+            "image_url": f"{image_base}/high.png" if image_base else None,
+        }
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Carta '{set_id}-{number}' no encontrada en TCGdex.")
+
+
 async def card_image_url(tcg_card_id: str):
     """
     Devuelve la URL de imagen consultando card_data.image de la SDK,
