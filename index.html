@@ -157,6 +157,8 @@
   .badge-foil  { background: rgba(232,131,74,0.12);  color: var(--accent2); }
   .badge-cond  { background: rgba(255,255,255,0.06); color: var(--text); }
   .badge-stamp { background: rgba(92,184,92,0.12);   color: var(--success); }
+  .badge-avail-yes { background: rgba(92,184,92,0.15); color: var(--success); }
+  .badge-avail-no  { background: rgba(255,255,255,0.05); color: var(--muted); }
 
   .count-ctrl { display: flex; align-items: center; gap: 0.3rem; font-family: var(--mono); font-size: 0.85rem; }
   .count-btn { width: 22px; height: 22px; border-radius: 3px; background: var(--border); color: var(--text); font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: background 0.1s; border: none; }
@@ -403,6 +405,12 @@
       </select>
     </div>
     <button class="btn btn-ghost btn-full" onclick="clearFilters()">✕ Limpiar</button>
+    <div class="filter-group" style="margin-top:0.25rem">
+      <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.67rem;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.08em">
+        <input type="checkbox" id="f-available" onchange="applyFilters()" style="width:auto;accent-color:var(--accent)" />
+        Solo disponibles
+      </label>
+    </div>
   </aside>
 
   <!-- Main -->
@@ -490,7 +498,11 @@
       </div>
       <div class="form-group">
         <label>Cantidad <span style="color:var(--accent)">*</span></label>
-        <input type="number" id="m-count" min="1" value="1" />
+        <input type="number" id="m-count" min="1" value="1" oninput="clampAvailable()" />
+      </div>
+      <div class="form-group">
+        <label>Disponible (venta/cambio)</label>
+        <input type="number" id="m-available" min="0" value="0" />
       </div>
       <div class="form-group">
         <label>Idioma <span style="color:var(--accent)">*</span></label>
@@ -661,6 +673,7 @@ function applyFilters() {
   const foil      = document.getElementById('f-foil').value;
   const condition = document.getElementById('f-condition').value;
   const stamp     = document.getElementById('f-stamp').value;
+  const availOnly = document.getElementById('f-available').checked;
 
   filteredCards = allCards.filter(c => {
     if (name && !((c.card_name||'').toLowerCase().includes(name)||(c.tcg_card_id||'').toLowerCase().includes(name))) return false;
@@ -673,6 +686,7 @@ function applyFilters() {
       if (stamp.toLowerCase()==='none') { if (!['','none',null,undefined].includes(s?.toLowerCase())) return false; }
       else if (s !== stamp) return false;
     }
+    if (availOnly && !(c.available_count > 0)) return false;
     return true;
   });
   document.getElementById('stat-showing').textContent = filteredCards.length;
@@ -681,6 +695,7 @@ function applyFilters() {
 
 function clearFilters() {
   ['f-name','f-set','f-language','f-foil','f-condition','f-stamp'].forEach(id=>{document.getElementById(id).value='';});
+  document.getElementById('f-available').checked = false;
   applyFilters();
 }
 
@@ -757,7 +772,7 @@ function renderTable(cards) {
         <div style="font-weight:600;font-size:0.86rem">${c.card_name||'—'}</div>
         <div style="font-family:var(--mono);font-size:0.66rem;color:var(--muted);margin-top:1px">${c.tcg_card_id}</div>
       </td>
-      <td style="color:var(--muted);font-size:0.78rem">${c.edition_name||'—'}</td>
+      <td style="color:var(--muted);font-size:0.78rem">${c.edition_name||'—'}${c.regulation_mark?`<span class="badge-reg" style="background:rgba(120,80,220,0.14);color:#c4a8ff;font-size:0.6rem;padding:0.1rem 0.35rem;border-radius:3px;font-family:var(--mono);font-weight:700;margin-left:4px;vertical-align:middle">${c.regulation_mark}</span>`:''}</td>
       <td style="font-family:var(--mono);font-size:0.8rem;text-align:center">${c.card_local_number||'—'}</td>
       <td>
         <div class="count-ctrl">
@@ -766,6 +781,9 @@ function renderTable(cards) {
           <button class="count-btn edit-only" onclick="event.stopPropagation();changeCount(${c.id},+1)">+</button>
         </div>
       </td>
+      <td style="text-align:center">${(c.available_count||0)>0
+        ?`<span class="badge badge-avail-yes">✓ ${c.available_count}</span>`
+        :`<span class="badge badge-avail-no">—</span>`}</td>
       <td><span class="badge badge-lang">${c.language||'—'}</span></td>
       <td><span class="badge badge-foil">${c.foil_type||'—'}</span></td>
       <td><span class="badge badge-cond">${c.condition||'—'}</span></td>
@@ -786,6 +804,7 @@ function renderTable(cards) {
         <th onclick="sortCards('edition_name')" class="${thClass('edition_name')}">Edición <span class="sort-icon"></span></th>
         <th onclick="sortCards('card_local_number')" class="${thClass('card_local_number')}" style="text-align:center">Nº Set <span class="sort-icon"></span></th>
         <th onclick="sortCards('count')" class="${thClass('count')}">Cantidad <span class="sort-icon"></span></th>
+        <th onclick="sortCards('available_count')" class="${thClass('available_count')}" style="text-align:center">Disponible <span class="sort-icon"></span></th>
         <th>Idioma</th><th>Brillo</th><th>Cond.</th><th>Sello</th><th class="edit-only"></th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -834,12 +853,14 @@ function renderTree(cards) {
   for (const c of cards) {
     const name = c.card_name || c.tcg_card_id || '—';
     const edition = c.edition_name || '—';
-    if (!byName.has(name)) byName.set(name, { total: 0, editions: new Map() });
+    if (!byName.has(name)) byName.set(name, { total: 0, totalAvail: 0, editions: new Map() });
     const nameNode = byName.get(name);
     nameNode.total += (c.count || 0);
-    if (!nameNode.editions.has(edition)) nameNode.editions.set(edition, { total: 0, cards: [], reg: c.regulation_mark || null });
+    nameNode.totalAvail += (c.available_count || 0);
+    if (!nameNode.editions.has(edition)) nameNode.editions.set(edition, { total: 0, totalAvail: 0, cards: [], reg: c.regulation_mark || null });
     const edNode = nameNode.editions.get(edition);
     edNode.total += (c.count || 0);
+    edNode.totalAvail += (c.available_count || 0);
     edNode.cards.push(c);
   }
 
@@ -862,6 +883,9 @@ function renderTree(cards) {
               <span style="min-width:1.4rem;text-align:center">${c.count}</span>
               <button class="count-btn edit-only" onclick="event.stopPropagation();changeCount(${c.id},+1)">+</button>
             </div></td>
+            <td style="text-align:center">${(c.available_count||0)>0
+              ?`<span class="badge badge-avail-yes">✓ ${c.available_count}</span>`
+              :`<span class="badge badge-avail-no">—</span>`}</td>
             <td><span class="badge badge-lang">${c.language||'—'}</span></td>
             <td><span class="badge badge-foil">${c.foil_type||'—'}</span></td>
             <td><span class="badge badge-cond">${c.condition||'—'}</span></td>
@@ -882,11 +906,12 @@ function renderTree(cards) {
               <span class="tree-l2-name">${edition}</span>
               ${edNode.reg ? `<span class="tree-l2-reg">${edNode.reg}</span>` : ''}
               <span class="tree-l2-count">${edNode.total}</span>
+              ${edNode.totalAvail>0?`<span class="badge badge-avail-yes" style="font-size:0.62rem;padding:0.08rem 0.4rem">✓ ${edNode.totalAvail}</span>`:''}
             </div>
             <div class="tree-l2-body${l2Open?' open':''}">
               <table class="tree-l3-table">
                 <thead><tr>
-                  <th>#</th><th>Cantidad</th><th>Idioma</th><th>Brillo</th><th>Cond.</th><th>Sello</th><th>ID Global</th><th class="edit-only"></th>
+                  <th>#</th><th>Cantidad</th><th>Disponible</th><th>Idioma</th><th>Brillo</th><th>Cond.</th><th>Sello</th><th>ID Global</th><th class="edit-only"></th>
                 </tr></thead>
                 <tbody>${rowsHtml}</tbody>
               </table>
@@ -900,6 +925,7 @@ function renderTree(cards) {
           <span class="tree-chevron${l1Open?' open':''}">▶</span>
           <span class="tree-l1-name">${name}</span>
           <span class="tree-l1-count">${nameNode.total}</span>
+          ${nameNode.totalAvail>0?`<span class="badge badge-avail-yes" style="font-size:0.65rem;padding:0.1rem 0.45rem">✓ ${nameNode.totalAvail}</span>`:''}
         </div>
         <div class="tree-l1-body${l1Open?' open':''}">
           ${editionsHtml}
@@ -1089,12 +1115,13 @@ function openEditModal(id) {
   document.getElementById('modal-title').textContent = 'Editar carta';
   document.getElementById('modal-submit-btn').textContent = 'Guardar cambios';
   document.getElementById('tcgdex-search-section').style.display = 'none';
-  document.getElementById('m-tcg-id').value    = card.tcg_card_id||'';
-  document.getElementById('m-count').value     = card.count||1;
-  document.getElementById('m-language').value  = card.language||'EN';
-  document.getElementById('m-foil').value      = card.foil_type||'Normal';
-  document.getElementById('m-condition').value = card.condition||'NM';
-  document.getElementById('m-stamp').value     = card.stamp||'None';
+  document.getElementById('m-tcg-id').value       = card.tcg_card_id||'';
+  document.getElementById('m-count').value         = card.count||1;
+  document.getElementById('m-available').value     = card.available_count||0;
+  document.getElementById('m-language').value      = card.language||'EN';
+  document.getElementById('m-foil').value          = card.foil_type||'Normal';
+  document.getElementById('m-condition').value     = card.condition||'NM';
+  document.getElementById('m-stamp').value         = card.stamp||'None';
   document.getElementById('card-modal').classList.add('open');
 }
 
@@ -1103,6 +1130,7 @@ function closeModal() { document.getElementById('card-modal').classList.remove('
 function clearForm() {
   ['tcgdex-query','m-tcg-id'].forEach(id=>{document.getElementById(id).value='';});
   document.getElementById('m-count').value=1;
+  document.getElementById('m-available').value=0;
   document.getElementById('m-language').value='EN';
   document.getElementById('m-foil').value='Normal';
   document.getElementById('m-condition').value='NM';
@@ -1111,15 +1139,18 @@ function clearForm() {
 
 async function submitCard() {
   const body = {
-    tcg_card_id: document.getElementById('m-tcg-id').value.trim(),
-    count:       parseInt(document.getElementById('m-count').value),
-    language:    document.getElementById('m-language').value,
-    foil_type:   document.getElementById('m-foil').value,
-    condition:   document.getElementById('m-condition').value,
-    stamp:       document.getElementById('m-stamp').value,
+    tcg_card_id:     document.getElementById('m-tcg-id').value.trim(),
+    count:           parseInt(document.getElementById('m-count').value),
+    available_count: parseInt(document.getElementById('m-available').value) || 0,
+    language:        document.getElementById('m-language').value,
+    foil_type:       document.getElementById('m-foil').value,
+    condition:       document.getElementById('m-condition').value,
+    stamp:           document.getElementById('m-stamp').value,
   };
   if (!body.tcg_card_id) { toast('El ID Global es obligatorio.', true); return; }
   if (!body.count||body.count<1) { toast('La cantidad debe ser mayor a 0.', true); return; }
+  if (body.available_count < 0) { toast('La cantidad disponible no puede ser negativa.', true); return; }
+  if (body.available_count > body.count) { toast('La cantidad disponible no puede superar la cantidad total.', true); return; }
 
   const btn = document.getElementById('modal-submit-btn');
   btn.textContent='…'; btn.disabled=true;
