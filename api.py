@@ -40,10 +40,21 @@ class CardFilters(BaseModel):
 controller = InventoryController()
 
 
+async def _background_enrich():
+    """Enriquece el inventario en background para no bloquear el arranque."""
+    try:
+        await controller.enrich_inventory()
+    except Exception as e:
+        print(f"[startup] Error en enriquecimiento: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
     controller.load_inventory()
-    await controller.enrich_inventory()
+    # Lanzar enriquecimiento en background: el servidor arranca inmediatamente
+    # y los datos enriquecidos estarán disponibles en segundos/minutos.
+    asyncio.create_task(_background_enrich())
     yield
 
 
@@ -291,11 +302,15 @@ async def _resolve_abbrev(abbrev: str) -> str | None:
             _abbrev_cache[key] = set_id
             return set_id
 
-    # Consultar TCGdex: listar todos los sets y buscar por abbreviation
+    # Consultar TCGdex: buscar por abbreviation con timeout
     try:
         from tcgdexsdk import Query
-        sets = await controller.api_service.tcgdex.set.list(
-            Query().equal("abbreviation", abbrev.upper())
+        import asyncio
+        sets = await asyncio.wait_for(
+            controller.api_service.tcgdex.set.list(
+                Query().equal("abbreviation", abbrev.upper())
+            ),
+            timeout=8.0
         )
         if sets:
             found_id = getattr(sets[0], 'id', None)
@@ -305,9 +320,13 @@ async def _resolve_abbrev(abbrev: str) -> str | None:
     except Exception:
         pass
 
-    # Segundo intento: buscar insensible a mayúsculas
+    # Segundo intento: listar todos los sets y buscar manualmente con timeout
     try:
-        sets = await controller.api_service.tcgdex.set.list()
+        import asyncio
+        sets = await asyncio.wait_for(
+            controller.api_service.tcgdex.set.list(),
+            timeout=10.0
+        )
         if sets:
             for s in sets:
                 abbr = getattr(s, 'abbreviation', None)
