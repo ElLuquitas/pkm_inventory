@@ -314,7 +314,7 @@ async def card_image_url(tcg_card_id: str):
 
 
 # ------------------------------------------------------------------
-# Decklist checker
+# Decklist checker — resolución de abreviaciones via pokemontcg.io + TCGdex
 # ------------------------------------------------------------------
 
 class DecklistInput(BaseModel):
@@ -322,70 +322,106 @@ class DecklistInput(BaseModel):
     available_only: bool = False
 
 
-# Cache en memoria: abbreviation (mayúsculas) → set_id TCGdex
-_abbrev_cache: dict[str, str] = {}
+def _normalize(name: str) -> str:
+    """Normaliza un nombre para comparación fuzzy: minúsculas, sin signos."""
+    import re
+    return re.sub(r'[^a-z0-9 ]', '', name.lower()).strip()
 
 
-async def _resolve_abbrev(abbrev: str) -> str | None:
+async def _build_ptcgl_map() -> dict:
     """
-    Convierte un código abreviado de carta (ej. 'MEG') al set_id de TCGdex (ej. 'me01').
-    Primero busca en el sets_cache del controller (por si el id coincide en minúsculas),
-    luego consulta TCGdex filtrando por abbreviation.
+    Construye el mapa {ABBREV_UPPER: tcgdex_set_id} cruzando pokemontcg.io con TCGdex.
+
+    1. Descarga todos los sets de pokemontcg.io (campo ptcgoCode + name).
+    2. Para cada set, busca en el sets_cache de TCGdex el set_id cuyo nombre
+       coincida (match exacto primero, luego fuzzy).
+    3. Retorna el mapa completo.
     """
-    key = abbrev.upper()
-    if key in _abbrev_cache:
-        return _abbrev_cache[key]
+    import httpx
+    import asyncio
 
-    # Intentar match directo: algunos sets tienen id == abbrev.lower()
-    lower = abbrev.lower()
-    if controller.sets_cache.get(lower):
-        _abbrev_cache[key] = lower
-        return lower
-
-    # Buscar en el sets_cache por nombre parcial (fallback débil)
-    all_sets = controller.sets_cache.get_all()
-    for set_id in all_sets:
-        if set_id.lower() == lower:
-            _abbrev_cache[key] = set_id
-            return set_id
-
-    # Consultar TCGdex: buscar por abbreviation con timeout
+    # --- Paso 1: obtener sets de pokemontcg.io ---
+    ptcgio_sets = []
     try:
-        from tcgdexsdk import Query
-        import asyncio
-        sets = await asyncio.wait_for(
-            controller.api_service.tcgdex.set.list(
-                Query().equal("abbreviation", abbrev.upper())
-            ),
-            timeout=8.0
-        )
-        if sets:
-            found_id = getattr(sets[0], 'id', None)
-            if found_id:
-                _abbrev_cache[key] = found_id
-                return found_id
-    except Exception:
-        pass
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            page = 1
+            while True:
+                r = await client.get(
+                    "https://api.pokemontcg.io/v2/sets",
+                    params={"pageSize": 250, "page": page, "select": "ptcgoCode,name"}
+                )
+                data = r.json()
+                batch = data.get("data", [])
+                if not batch:
+                    break
+                ptcgio_sets.extend(batch)
+                if len(batch) < 250:
+                    break
+                page += 1
+    except Exception as e:
+        print(f"[ptcgl_map] Error consultando pokemontcg.io: {e}")
+        return {}
 
-    # Segundo intento: listar todos los sets y buscar manualmente con timeout
-    try:
-        import asyncio
-        sets = await asyncio.wait_for(
-            controller.api_service.tcgdex.set.list(),
-            timeout=10.0
-        )
-        if sets:
-            for s in sets:
-                abbr = getattr(s, 'abbreviation', None)
-                if abbr and abbr.upper() == key:
-                    found_id = getattr(s, 'id', None)
-                    if found_id:
-                        _abbrev_cache[key] = found_id
-                        return found_id
-    except Exception:
-        pass
+    if not ptcgio_sets:
+        return {}
 
-    return None
+    # --- Paso 2: cruzar con sets_cache de TCGdex ---
+    # sets_cache: {set_id: set_name} — ya tenemos nombres de TCGdex
+    tcgdex_sets = {
+        set_id: name
+        for set_id, name in controller.sets_cache.get_all().items()
+        if isinstance(name, str) and not set_id.startswith('_')
+    }
+    # Índice normalizado para búsqueda rápida
+    tcgdex_normalized = {_normalize(name): set_id for set_id, name in tcgdex_sets.items()}
+
+    mapping = {}
+    unresolved = []
+
+    for s in ptcgio_sets:
+        code = (s.get("ptcgoCode") or "").strip().upper()
+        name = (s.get("name") or "").strip()
+        if not code or not name:
+            continue
+
+        norm = _normalize(name)
+
+        # Match exacto normalizado
+        if norm in tcgdex_normalized:
+            mapping[code] = tcgdex_normalized[norm]
+            continue
+
+        # Match parcial: tcgdex name contiene el nombre de pokemontcg o viceversa
+        found = None
+        for tcgdex_norm, set_id in tcgdex_normalized.items():
+            if norm in tcgdex_norm or tcgdex_norm in norm:
+                found = set_id
+                break
+        if found:
+            mapping[code] = found
+        else:
+            unresolved.append((code, name))
+
+    if unresolved:
+        print(f"[ptcgl_map] {len(unresolved)} sets sin resolver: {unresolved[:10]}")
+
+    print(f"[ptcgl_map] Mapa construido: {len(mapping)} abreviaciones resueltas.")
+    return mapping
+
+
+async def _ensure_ptcgl_map() -> dict:
+    """
+    Retorna el mapa de abreviaciones, construyéndolo si no existe en el cache.
+    Persiste el resultado en sets_cache (y por ende en Drive si está configurado).
+    """
+    if controller.sets_cache.has_ptcgl_map():
+        return controller.sets_cache.get_ptcgl_map()
+
+    print("[ptcgl_map] Construyendo mapa PTCGL→TCGdex por primera vez…")
+    mapping = await _build_ptcgl_map()
+    if mapping:
+        controller.sets_cache.set_ptcgl_map(mapping)
+    return mapping
 
 
 def _parse_decklist(text: str) -> list[dict]:
@@ -427,7 +463,6 @@ def _parse_decklist(text: str) -> list[dict]:
 async def check_decklist(body: DecklistInput):
     """
     Parsea una decklist en formato Limitless/PTCGL y la cruza con el inventario.
-    Retorna categorías con sus cartas y estado (tengo / faltan).
     """
     if not body.text.strip():
         raise HTTPException(status_code=400, detail="La lista está vacía.")
@@ -435,6 +470,9 @@ async def check_decklist(body: DecklistInput):
     df = controller.enriched_df if controller.enriched_df is not None else controller.inventory_df
     if df is None or df.empty:
         raise HTTPException(status_code=503, detail="Inventario no cargado.")
+
+    # Asegurar que el mapa de abreviaciones esté disponible
+    ptcgl_map = await _ensure_ptcgl_map()
 
     parsed = _parse_decklist(body.text)
     results = []
@@ -444,23 +482,27 @@ async def check_decklist(body: DecklistInput):
             results.append(item)
             continue
 
-        abbrev = item['abbrev']
+        abbrev = item['abbrev'].upper()
         number_raw = item['number']
 
-        # Resolver abbreviation → set_id
-        set_id = await _resolve_abbrev(abbrev)
+        # Resolver abbreviation → set_id desde el mapa
+        set_id = ptcgl_map.get(abbrev)
 
         if not set_id:
-            results.append({**item, 'tcg_id': None, 'have': 0, 'missing': item['qty'],
-                             'error': f"Edición '{abbrev}' no encontrada"})
+            results.append({
+                **item,
+                'tcg_id': None,
+                'have': 0,
+                'missing': item['qty'],
+                'error': f"Edición '{abbrev}' no encontrada en el mapa"
+            })
             continue
 
-        # Construir tcg_card_id: número con ceros hasta 3 dígitos si es numérico
+        # Construir tcg_card_id con número formateado
         try:
-            num_int = int(number_raw)
-            number_fmt = str(num_int).zfill(3)
+            number_fmt = str(int(number_raw)).zfill(3)
         except ValueError:
-            number_fmt = number_raw  # Números como "SV001", "TG01", etc.
+            number_fmt = number_raw  # ej. "SV001", "TG01"
 
         tcg_id = f"{set_id}-{number_fmt}"
 
@@ -478,3 +520,20 @@ async def check_decklist(body: DecklistInput):
         results.append({**item, 'tcg_id': tcg_id, 'have': have, 'missing': missing})
 
     return results
+
+
+@app.post("/admin/rebuild-ptcgl-map", summary="Reconstruir mapa PTCGL→TCGdex", include_in_schema=False)
+async def rebuild_ptcgl_map():
+    """
+    Fuerza la reconstrucción del mapa de abreviaciones Limitless/PTCGL → TCGdex.
+    Llamar manualmente si aparecen sets nuevos sin resolver.
+    """
+    # Limpiar el mapa existente para forzar reconstrucción
+    existing = controller.sets_cache.get_ptcgl_map()
+    controller.sets_cache.cache.pop(controller.sets_cache._PTCGL_MAP_KEY, None)
+
+    mapping = await _build_ptcgl_map()
+    if mapping:
+        controller.sets_cache.set_ptcgl_map(mapping)
+        return {"status": "ok", "resolved": len(mapping)}
+    return {"status": "error", "resolved": 0}

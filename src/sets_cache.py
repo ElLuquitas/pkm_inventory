@@ -68,8 +68,7 @@ class SetsCache(BaseCache):
     """
 
     def __init__(self):
-        from src.config import SETS_CACHE_FILE_ID
-        super().__init__(cache_file='sets_cache.json', drive_file_id=SETS_CACHE_FILE_ID)
+        super().__init__(cache_file='sets_cache.json')
         self._seed_if_empty()
 
     # ------------------------------------------------------------------
@@ -102,31 +101,47 @@ class SetsCache(BaseCache):
     def get_id_by_name(self, display_name: str) -> str:
         """
         Busca el set_id a partir de su nombre para mostrar.
-
-        Útil para los filtros de la UI, donde el usuario ve el nombre
-        pero internamente se necesita el ID para filtrar el DataFrame.
-
-        Returns:
-            set_id si se encuentra, o el display_name original como fallback.
         """
         for set_id, name in self.cache.items():
-            if name == display_name:
+            if isinstance(name, str) and name == display_name:
                 return set_id
         return display_name
 
     def search(self, query: str) -> dict:
-        """
-        Busca sets cuyo ID o nombre contengan el query.
-
-        Returns:
-            Dict de {set_id: set_name} con los resultados.
-        """
+        """Busca sets cuyo ID o nombre contengan el query."""
         q = query.lower()
         return {
             set_id: name
             for set_id, name in self.cache.items()
-            if q in set_id.lower() or q in name.lower()
+            if isinstance(name, str) and (q in set_id.lower() or q in name.lower())
         }
+
+    # ------------------------------------------------------------------
+    # Mapa PTCGL/Limitless abbreviation → TCGdex set_id
+    # Se guarda dentro del cache bajo la clave especial "_ptcgl_map"
+    # ------------------------------------------------------------------
+
+    _PTCGL_MAP_KEY = '_ptcgl_map'
+
+    def get_ptcgl_map(self) -> dict:
+        """Retorna el mapa {ABBREV: set_id} o {} si no está construido."""
+        return self.cache.get(self._PTCGL_MAP_KEY) or {}
+
+    def has_ptcgl_map(self) -> bool:
+        """Indica si el mapa ya fue construido."""
+        return bool(self.cache.get(self._PTCGL_MAP_KEY))
+
+    def set_ptcgl_map(self, mapping: dict) -> None:
+        """Guarda el mapa de abreviaciones y persiste."""
+        self.cache[self._PTCGL_MAP_KEY] = mapping
+        self._save_cache()
+
+    def resolve_abbrev(self, abbrev: str) -> str | None:
+        """
+        Dado un código abreviado de Limitless/PTCGL (ej. 'MEG'),
+        retorna el TCGdex set_id (ej. 'me01'), o None si no está en el mapa.
+        """
+        return self.get_ptcgl_map().get(abbrev.upper())
 
     # ------------------------------------------------------------------
     # Método interno
@@ -135,8 +150,6 @@ class SetsCache(BaseCache):
     def _seed_if_empty(self) -> None:
         """
         Pre-popula el cache con datos semilla si está vacío.
-
-        Solo se ejecuta una vez (primera ejecución o cache borrado).
         No sobreescribe entradas existentes para no pisar datos de la API.
         """
         if not self.cache:
