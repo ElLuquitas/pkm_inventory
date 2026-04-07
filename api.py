@@ -253,3 +253,162 @@ async def card_image_url(tcg_card_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ------------------------------------------------------------------
+# Decklist checker
+# ------------------------------------------------------------------
+
+class DecklistInput(BaseModel):
+    text: str
+    available_only: bool = False
+
+
+# Cache en memoria: abbreviation (mayúsculas) → set_id TCGdex
+_abbrev_cache: dict[str, str] = {}
+
+
+async def _resolve_abbrev(abbrev: str) -> str | None:
+    """
+    Convierte un código abreviado de carta (ej. 'MEG') al set_id de TCGdex (ej. 'me01').
+    Primero busca en el sets_cache del controller (por si el id coincide en minúsculas),
+    luego consulta TCGdex filtrando por abbreviation.
+    """
+    key = abbrev.upper()
+    if key in _abbrev_cache:
+        return _abbrev_cache[key]
+
+    # Intentar match directo: algunos sets tienen id == abbrev.lower()
+    lower = abbrev.lower()
+    if controller.sets_cache.get(lower):
+        _abbrev_cache[key] = lower
+        return lower
+
+    # Buscar en el sets_cache por nombre parcial (fallback débil)
+    all_sets = controller.sets_cache.get_all()
+    for set_id in all_sets:
+        if set_id.lower() == lower:
+            _abbrev_cache[key] = set_id
+            return set_id
+
+    # Consultar TCGdex: listar todos los sets y buscar por abbreviation
+    try:
+        from tcgdexsdk import Query
+        sets = await controller.api_service.tcgdex.set.list(
+            Query().equal("abbreviation", abbrev.upper())
+        )
+        if sets:
+            found_id = getattr(sets[0], 'id', None)
+            if found_id:
+                _abbrev_cache[key] = found_id
+                return found_id
+    except Exception:
+        pass
+
+    # Segundo intento: buscar insensible a mayúsculas
+    try:
+        sets = await controller.api_service.tcgdex.set.list()
+        if sets:
+            for s in sets:
+                abbr = getattr(s, 'abbreviation', None)
+                if abbr and abbr.upper() == key:
+                    found_id = getattr(s, 'id', None)
+                    if found_id:
+                        _abbrev_cache[key] = found_id
+                        return found_id
+    except Exception:
+        pass
+
+    return None
+
+
+def _parse_decklist(text: str) -> list[dict]:
+    """
+    Parsea el texto de una decklist en categorías con cartas.
+    Retorna lista de: {type: 'category'|'card', ...}
+    """
+    result = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        # Línea de categoría: "Pokémon: 13" o "Trainer: 39"
+        if ':' in line and line.split(':')[0].strip().replace(' ', '').isalpha():
+            parts = line.split(':', 1)
+            result.append({'type': 'category', 'label': parts[0].strip(), 'total': parts[1].strip()})
+            continue
+        # Línea de carta: "4 Charizard MEG 131"
+        tokens = line.split()
+        if len(tokens) >= 3:
+            try:
+                qty = int(tokens[0])
+                number = tokens[-1]
+                abbrev = tokens[-2]
+                name = ' '.join(tokens[1:-2])
+                result.append({
+                    'type': 'card',
+                    'qty': qty,
+                    'name': name,
+                    'abbrev': abbrev,
+                    'number': number,
+                })
+            except (ValueError, IndexError):
+                continue
+    return result
+
+
+@app.post("/decklist/check", summary="Cruzar decklist con inventario")
+async def check_decklist(body: DecklistInput):
+    """
+    Parsea una decklist en formato Limitless/PTCGL y la cruza con el inventario.
+    Retorna categorías con sus cartas y estado (tengo / faltan).
+    """
+    if not body.text.strip():
+        raise HTTPException(status_code=400, detail="La lista está vacía.")
+
+    df = controller.enriched_df if controller.enriched_df is not None else controller.inventory_df
+    if df is None or df.empty:
+        raise HTTPException(status_code=503, detail="Inventario no cargado.")
+
+    parsed = _parse_decklist(body.text)
+    results = []
+
+    for item in parsed:
+        if item['type'] == 'category':
+            results.append(item)
+            continue
+
+        abbrev = item['abbrev']
+        number_raw = item['number']
+
+        # Resolver abbreviation → set_id
+        set_id = await _resolve_abbrev(abbrev)
+
+        if not set_id:
+            results.append({**item, 'tcg_id': None, 'have': 0, 'missing': item['qty'],
+                             'error': f"Edición '{abbrev}' no encontrada"})
+            continue
+
+        # Construir tcg_card_id: número con ceros hasta 3 dígitos si es numérico
+        try:
+            num_int = int(number_raw)
+            number_fmt = str(num_int).zfill(3)
+        except ValueError:
+            number_fmt = number_raw  # Números como "SV001", "TG01", etc.
+
+        tcg_id = f"{set_id}-{number_fmt}"
+
+        # Buscar en inventario
+        mask = df['tcg_card_id'] == tcg_id
+        if mask.any():
+            if body.available_only and 'available_count' in df.columns:
+                have = int(df.loc[mask, 'available_count'].fillna(0).astype(int).sum())
+            else:
+                have = int(df.loc[mask, 'count'].sum())
+        else:
+            have = 0
+
+        missing = max(0, item['qty'] - have)
+        results.append({**item, 'tcg_id': tcg_id, 'have': have, 'missing': missing})
+
+    return results

@@ -295,6 +295,37 @@
   .tree-l3-table tbody tr:hover { background: rgba(245,200,66,0.05); }
   .tree-l3-table tbody tr.selected { background: rgba(245,200,66,0.09); }
 
+  /* ── Decklist modal ── */
+  #deck-modal .modal { max-width: 720px; max-height: 88vh; overflow-y: auto; }
+  .deck-textarea {
+    width: 100%; min-height: 160px; resize: vertical;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    font-family: var(--mono); font-size: 0.78rem; padding: 0.65rem 0.75rem;
+    border-radius: var(--radius); line-height: 1.6; transition: border-color 0.15s;
+  }
+  .deck-textarea:focus { outline: none; border-color: var(--accent); }
+  .deck-toggle { display: flex; gap: 0.5rem; align-items: center; font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
+  .deck-toggle input { width: auto; accent-color: var(--accent); }
+  .deck-results { display: flex; flex-direction: column; gap: 0; margin-top: 0.25rem; }
+  .deck-category {
+    font-family: var(--mono); font-size: 0.65rem; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--muted); padding: 0.75rem 0 0.3rem;
+    border-bottom: 1px solid var(--border); margin-bottom: 0;
+  }
+  .deck-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .deck-table th { text-align: left; padding: 0.45rem 0.65rem; font-family: var(--mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .deck-table td { padding: 0.5rem 0.65rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .deck-table tr:last-child td { border-bottom: none; }
+  .deck-table tbody tr.ok { }
+  .deck-table tbody tr.missing td.col-missing { color: var(--danger); font-weight: 700; }
+  .deck-table tbody tr.ok td.col-missing { color: var(--success); }
+  .deck-summary { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+  .deck-stat { font-family: var(--mono); font-size: 0.75rem; }
+  .deck-stat span { font-weight: 700; }
+  .deck-stat .ok  { color: var(--success); }
+  .deck-stat .bad { color: var(--danger); }
+  .deck-error { font-family: var(--mono); font-size: 0.7rem; color: var(--danger); margin-top: 2px; }
+
   /* ── Columnas ordenables ── */
   th.sortable { cursor: pointer; user-select: none; }
   th.sortable:hover { color: var(--text); }
@@ -358,6 +389,7 @@
       <button class="view-toggle-btn" id="toggle-tree" onclick="setView('tree')" title="Vista árbol">⊟ Árbol</button>
     </div>
     <button class="btn btn-ghost btn-sm" onclick="reloadInventory()">↺ Sync</button>
+    <button class="btn btn-ghost btn-sm" onclick="openDeckModal()">⊟ Mazo</button>
     <button class="btn btn-primary btn-sm edit-only" onclick="openAddModal()">+ Agregar carta</button>
   </div>
 </header>
@@ -549,6 +581,28 @@
       <button class="btn btn-ghost" onclick="closeConfirm()">Cancelar</button>
       <button class="btn btn-danger" onclick="confirmDelete()">Eliminar</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal decklist -->
+<div class="modal-backdrop" id="deck-modal">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <div class="modal-title">Verificador de Mazo</div>
+      <button class="modal-close" onclick="closeDeckModal()">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Pega tu lista aquí</label>
+      <textarea class="deck-textarea" id="deck-text" placeholder="Pokémon: 13&#10;4 Charizard MEG 131&#10;...&#10;Trainer: 4&#10;4 Ultra Ball MEG 200&#10;Energy: 4&#10;4 Fire Energy MEG 250"></textarea>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.75rem">
+      <label class="deck-toggle">
+        <input type="checkbox" id="deck-available-only" />
+        Cruzar solo con cartas disponibles para venta/cambio
+      </label>
+      <button class="btn btn-primary" onclick="checkDecklist()" id="deck-check-btn">Verificar lista</button>
+    </div>
+    <div id="deck-results"></div>
   </div>
 </div>
 
@@ -1185,6 +1239,98 @@ async function confirmDelete() {
   } catch(e) { toast(e.message, true); }
 }
 
+// ── Decklist checker ──
+function openDeckModal() {
+  document.getElementById('deck-modal').classList.add('open');
+}
+function closeDeckModal() {
+  document.getElementById('deck-modal').classList.remove('open');
+}
+
+async function checkDecklist() {
+  const text = document.getElementById('deck-text').value.trim();
+  if (!text) { toast('Pega una lista primero.', true); return; }
+
+  const availOnly = document.getElementById('deck-available-only').checked;
+  const btn = document.getElementById('deck-check-btn');
+  btn.textContent = '…'; btn.disabled = true;
+
+  const resultsEl = document.getElementById('deck-results');
+  resultsEl.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div> Verificando…</div>';
+
+  try {
+    const data = await api('POST', '/decklist/check', { text, available_only: availOnly });
+    renderDeckResults(data, availOnly);
+  } catch(e) {
+    resultsEl.innerHTML = `<div class="empty" style="margin-top:1rem"><div class="empty-icon">⚠</div>${e.message}</div>`;
+  } finally {
+    btn.textContent = 'Verificar lista'; btn.disabled = false;
+  }
+}
+
+function renderDeckResults(data, availOnly) {
+  const resultsEl = document.getElementById('deck-results');
+  if (!data.length) { resultsEl.innerHTML = ''; return; }
+
+  let totalNeeded = 0, totalHave = 0, totalMissing = 0;
+  let html = '<div class="deck-results"><table class="deck-table">';
+  let inTable = false;
+
+  for (const item of data) {
+    if (item.type === 'category') {
+      if (inTable) html += '</tbody></table>';
+      html += `<div class="deck-category">${item.label}</div>
+               <table class="deck-table"><thead><tr>
+                 <th>Carta</th><th>ID Global</th><th style="text-align:center">Necesarias</th>
+                 <th style="text-align:center">${availOnly ? 'Disponibles' : 'Tengo'}</th>
+                 <th style="text-align:center">Faltan</th>
+               </tr></thead><tbody>`;
+      inTable = true;
+      continue;
+    }
+
+    const needed = item.qty || 0;
+    const have   = item.have ?? 0;
+    const miss   = item.missing ?? needed;
+    totalNeeded += needed;
+    totalHave   += Math.min(have, needed);
+    totalMissing += miss;
+
+    const rowClass = miss === 0 ? 'ok' : 'missing';
+    const missDisplay = miss === 0
+      ? `<span style="color:var(--success)">OK</span>`
+      : `<span style="color:var(--danger);font-weight:700">−${miss}</span>`;
+    const haveDisplay = have >= needed
+      ? `<span style="color:var(--success)">${have}</span>`
+      : `<span style="color:${have > 0 ? 'var(--accent2)' : 'var(--muted)'}">${have}</span>`;
+    const idDisplay = item.tcg_id
+      ? `<span style="font-family:var(--mono);font-size:0.68rem;color:var(--muted)">${item.tcg_id}</span>`
+      : `<span style="font-family:var(--mono);font-size:0.68rem;color:var(--danger)">${item.error || '?'}</span>`;
+
+    html += `<tr class="${rowClass}">
+      <td>${item.qty}× ${item.name}</td>
+      <td>${idDisplay}</td>
+      <td style="text-align:center;font-family:var(--mono)">${needed}</td>
+      <td style="text-align:center;font-family:var(--mono)">${haveDisplay}</td>
+      <td style="text-align:center;font-family:var(--mono)" class="col-missing">${missDisplay}</td>
+    </tr>`;
+  }
+
+  if (inTable) html += '</tbody></table>';
+  html += '</div>';
+
+  // Resumen
+  const pct = totalNeeded > 0 ? Math.round((totalHave / totalNeeded) * 100) : 0;
+  html += `<div class="deck-summary">
+    <div class="deck-stat">Cartas necesarias: <span>${totalNeeded}</span></div>
+    <div class="deck-stat">Tenés: <span class="${totalMissing === 0 ? 'ok' : 'bad'}">${totalHave}</span></div>
+    <div class="deck-stat">Faltan: <span class="${totalMissing === 0 ? 'ok' : 'bad'}">${totalMissing}</span></div>
+    <div class="deck-stat">Completitud: <span class="${pct === 100 ? 'ok' : 'bad'}">${pct}%</span></div>
+  </div>`;
+
+  resultsEl.innerHTML = html;
+}
+
 // ── Toast ──
 function toast(msg, isError=false) {
   const el=document.createElement('div');
@@ -1251,6 +1397,7 @@ document.getElementById('card-modal').addEventListener('click', e=>{ if(e.target
 document.getElementById('confirm-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeConfirm(); });
 document.getElementById('img-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeImgModal(); });
 document.getElementById('pw-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closePwModal(); });
+document.getElementById('deck-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeDeckModal(); });
 document.addEventListener('click', e=>{ if(!e.target.closest('.tcgdex-search-wrap')) hideTcgResults(); });
 document.addEventListener('click', e=>{ if(e.target===document.getElementById('sidebar') || (!e.target.closest('#sidebar') && !e.target.closest('.mobile-filter-btn'))) {
   if(window.innerWidth<=768) document.getElementById('sidebar').classList.remove('open');
