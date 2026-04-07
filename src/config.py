@@ -20,7 +20,10 @@ GOOGLE_CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'credentials.json
 GOOGLE_FILE_ID = os.getenv('GOOGLE_FILE_ID', '')
 
 # Columnas del inventario ('id' es autogenerado, no se incluye en inputs)
-FIELDNAMES = ['id', 'tcg_card_id', 'count', 'language', 'foil_type', 'stamp', 'condition']
+FIELDNAMES = ['id', 'tcg_card_id', 'count', 'available_count', 'language', 'foil_type', 'stamp', 'condition']
+
+# Contraseña de edición (se lee desde variable de entorno; fallback local para desarrollo)
+EDIT_PASSWORD = os.getenv('EDIT_PASSWORD', 'pkm1234')
 
 # Opciones de búsqueda (para compatibilidad con código existente)
 SEARCH_OPTIONS = ["Buscar por Nombre de Carta", "Buscar por Edición"]
@@ -32,6 +35,7 @@ DISPLAY_HEADERS = {
     'card_local_number': "# Local",
     'tcg_card_id': "ID Global",
     'count': "Cantidad",
+    'available_count': "Disponible",
     'language': "Idioma",
     'foil_type': "Brillo",
     'stamp': "Sello",

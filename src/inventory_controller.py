@@ -63,6 +63,10 @@ class InventoryController:
         enriched['regulation_mark'] = enriched['tcg_card_id'].apply(
             lambda x: (self.card_cache.get(x) or {}).get('regulation_mark')
         )
+        # Asegurar que available_count existe y es entero
+        if 'available_count' not in enriched.columns:
+            enriched['available_count'] = 0
+        enriched['available_count'] = enriched['available_count'].fillna(0).astype(int)
 
         self.enriched_df = enriched
         return enriched
@@ -86,8 +90,11 @@ class InventoryController:
         if card_id not in self.inventory_df.index:
             return False
         row = self.inventory_df.loc[card_id]
+        new_count = row['count'] + 1
+        # available_count sube en 1 junto con count (mantener proporción)
+        new_avail = int(row.get('available_count', 0) or 0) + 1
         return self.data_manager.update_card(card_id, {
-            **row.to_dict(), 'count': row['count'] + 1
+            **row.to_dict(), 'count': new_count, 'available_count': new_avail
         })
 
     def decrement_count(self, card_id: int) -> tuple[bool, bool]:
@@ -97,8 +104,11 @@ class InventoryController:
         new_count = row['count'] - 1
         if new_count <= 0:
             return True, True
+        # available_count baja en 1 pero nunca por debajo de 0
+        cur_avail = int(row.get('available_count', 0) or 0)
+        new_avail = max(0, cur_avail - 1)
         return self.data_manager.update_card(card_id, {
-            **row.to_dict(), 'count': new_count
+            **row.to_dict(), 'count': new_count, 'available_count': new_avail
         }), False
 
     # ------------------------------------------------------------------
@@ -140,6 +150,10 @@ class InventoryController:
             else:
                 df = df[df['stamp'].str.contains(stamp, case=False, na=False)]
 
+        if filters.get('available_only'):
+            if 'available_count' in df.columns:
+                df = df[df['available_count'].fillna(0).astype(int) > 0]
+
         return df
 
     # ------------------------------------------------------------------
@@ -164,11 +178,10 @@ class InventoryController:
                 if not isinstance(card, Exception):
                     image_base = getattr(card, 'image', None)
                     new_data[tcg_id] = {
-                        'name':            getattr(card, 'name', 'N/A'),
-                        'set_name':        getattr(card.set, 'name', 'N/A') if hasattr(card, 'set') else 'N/A',
-                        'local_id':        getattr(card, 'localId', 'N/A'),
-                        'image_url':       f"{image_base}/high.png" if image_base else None,
-                        'regulation_mark': getattr(card, 'regulationMark', None),
+                        'name':      getattr(card, 'name', 'N/A'),
+                        'set_name':  getattr(card.set, 'name', 'N/A') if hasattr(card, 'set') else 'N/A',
+                        'local_id':  getattr(card, 'localId', 'N/A'),
+                        'image_url': f"{image_base}/high.png" if image_base else None,
                     }
 
         if new_data:
@@ -209,3 +222,13 @@ class InventoryController:
         count = card_data.get('count', 0)
         if not isinstance(count, int) or count <= 0:
             raise ValueError("La cantidad debe ser un número entero mayor a 0.")
+        available = card_data.get('available_count', 0)
+        try:
+            available = int(available)
+        except (TypeError, ValueError):
+            available = 0
+        if available < 0:
+            raise ValueError("La cantidad disponible no puede ser negativa.")
+        if available > count:
+            raise ValueError("La cantidad disponible no puede superar la cantidad total.")
+        card_data['available_count'] = available

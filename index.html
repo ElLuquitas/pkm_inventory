@@ -551,8 +551,9 @@ let filterTimer = null, tcgSearchTimer = null;
 let sortCol = null, sortDir = 1; // 1=asc, -1=desc
 let editMode = false; // empieza bloqueado; se desbloquea con contraseña
 
-// Contraseña de edición — cámbiala aquí
-const EDIT_PASSWORD = "pkm1234";
+// Contraseña de edición — se carga desde el servidor (variable de entorno EDIT_PASSWORD)
+let EDIT_PASSWORD = '';
+fetch('/config').then(r=>r.json()).then(d=>{ EDIT_PASSWORD = d.edit_password || ''; }).catch(()=>{});
 
 document.addEventListener('DOMContentLoaded', () => {
   loadInventory();
@@ -1017,9 +1018,22 @@ async function changeCount(id, delta) {
       if (res.reached_zero) toast(`Carta #${id} llegó a 0 — considera eliminarla.`);
     }
     const card = allCards.find(c=>c.id===id);
-    if (card) card.count = Math.max(0, card.count+delta);
+    if (card) {
+      card.count = Math.max(0, card.count + delta);
+      // available_count se sincroniza en la misma dirección, respetando los límites
+      if (delta > 0) card.available_count = (card.available_count || 0) + 1;
+      else card.available_count = Math.max(0, (card.available_count || 0) - 1);
+    }
     applyFilters();
   } catch(e) { toast(e.message, true); }
+}
+
+function clampAvailable() {
+  const countEl = document.getElementById('m-count');
+  const availEl = document.getElementById('m-available');
+  const maxVal = parseInt(countEl.value) || 0;
+  availEl.max = maxVal;
+  if ((parseInt(availEl.value) || 0) > maxVal) availEl.value = maxVal;
 }
 
 // ── Buscador TCGdex ──
@@ -1169,11 +1183,16 @@ function applyEditMode() {
 }
 
 function openPwModal() {
-  const isLocked = !editMode;
-  document.getElementById('pw-modal-title').textContent = isLocked ? 'Desbloquear edición' : 'Bloquear edición';
-  document.getElementById('pw-hint').textContent = isLocked
-    ? 'Ingresa la contraseña para activar la edición.'
-    : 'Ingresa la contraseña para volver al modo lectura.';
+  if (editMode) {
+    // Salir del modo edición directamente, sin pedir contraseña
+    editMode = false;
+    applyEditMode();
+    toast('Edición bloqueada 🔒');
+    return;
+  }
+  // Solo pedir contraseña para activar la edición
+  document.getElementById('pw-modal-title').textContent = 'Desbloquear edición';
+  document.getElementById('pw-hint').textContent = 'Ingresa la contraseña para activar la edición.';
   document.getElementById('pw-input').value = '';
   document.getElementById('pw-modal').classList.add('open');
   setTimeout(() => document.getElementById('pw-input').focus(), 100);
@@ -1185,15 +1204,16 @@ function closePwModal() {
 
 function submitPw() {
   const val = document.getElementById('pw-input').value;
+  if (!EDIT_PASSWORD) { toast('Contraseña no cargada aún, reintenta.', true); return; }
   if (val !== EDIT_PASSWORD) {
     document.getElementById('pw-hint').textContent = '❌ Contraseña incorrecta.';
     document.getElementById('pw-input').value = '';
     return;
   }
-  editMode = !editMode;
+  editMode = true;
   applyEditMode();
   closePwModal();
-  toast(editMode ? 'Modo edición activado 🔓' : 'Edición bloqueada 🔒');
+  toast('Modo edición activado 🔓');
 }
 
 document.getElementById('card-modal').addEventListener('click', e=>{ if(e.target===e.currentTarget) closeModal(); });

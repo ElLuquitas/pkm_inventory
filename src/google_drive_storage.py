@@ -57,6 +57,9 @@ class GoogleDriveStorage(StorageInterface):
             df = pd.read_csv(buffer, dtype={'count': int})
             if 'id' in df.columns:
                 df = df.set_index('id')
+            if 'available_count' not in df.columns:
+                df['available_count'] = 0
+            df['available_count'] = df['available_count'].fillna(0).astype(int)
             return df
         except pd.errors.EmptyDataError:
             return pd.DataFrame(columns=FIELDNAMES).set_index('id')
