@@ -76,6 +76,31 @@ class GoogleDriveStorage(StorageInterface):
         ).execute()
 
     # ------------------------------------------------------------------
+    # JSON helpers (para card_cache y sets_cache)
+    # ------------------------------------------------------------------
+
+    def download_json(self, file_id: str) -> dict:
+        """Descarga un archivo JSON desde Drive y lo retorna como dict."""
+        request = self.service.files().get_media(fileId=file_id)
+        buffer = io.BytesIO()
+        downloader = MediaIoBaseDownload(buffer, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        buffer.seek(0)
+        return json.loads(buffer.read().decode('utf-8'))
+
+    def upload_json(self, file_id: str, data: dict) -> None:
+        """Sube un dict como JSON a Drive, sobreescribiendo el archivo."""
+        content = json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
+        buffer = io.BytesIO(content)
+        media = MediaIoBaseUpload(buffer, mimetype='application/json', resumable=False)
+        self.service.files().update(
+            fileId=file_id,
+            media_body=media
+        ).execute()
+
+    # ------------------------------------------------------------------
     # StorageInterface
     # ------------------------------------------------------------------
 

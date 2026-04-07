@@ -68,7 +68,8 @@ class SetsCache(BaseCache):
     """
 
     def __init__(self):
-        super().__init__(cache_file='sets_cache.json')
+        from src.config import SETS_CACHE_FILE_ID
+        super().__init__(cache_file='sets_cache.json', drive_file_id=SETS_CACHE_FILE_ID)
         self._seed_if_empty()
 
     # ------------------------------------------------------------------

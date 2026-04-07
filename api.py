@@ -40,21 +40,10 @@ class CardFilters(BaseModel):
 controller = InventoryController()
 
 
-async def _background_enrich():
-    """Enriquece el inventario en background para no bloquear el arranque."""
-    try:
-        await controller.enrich_inventory()
-    except Exception as e:
-        print(f"[startup] Error en enriquecimiento: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import asyncio
+    # Solo carga el CSV — el enriquecimiento ocurre en el primer GET /inventory
     controller.load_inventory()
-    # Lanzar enriquecimiento en background: el servidor arranca inmediatamente
-    # y los datos enriquecidos estarán disponibles en segundos/minutos.
-    asyncio.create_task(_background_enrich())
     yield
 
 
@@ -104,8 +93,10 @@ def serve_frontend():
 
 
 @app.get("/inventory", summary="Obtener inventario completo enriquecido")
-def get_inventory():
+async def get_inventory():
     """Retorna todas las cartas con nombre, edición y atributos."""
+    if controller.enriched_df is None:
+        await controller.enrich_inventory()
     df = controller.enriched_df if controller.enriched_df is not None else controller.inventory_df
     if df is None or df.empty:
         return []
@@ -184,12 +175,68 @@ def get_sets():
     return []
 
 
-@app.post("/reload", summary="Recargar inventario desde Drive")
+@app.post("/admin/rebuild-cache", summary="Reconstruir cache de cartas", include_in_schema=False)
+async def rebuild_cache():
+    """
+    Reconstruye el card_cache para todas las cartas del inventario,
+    incluyendo regulation_mark e image_url. Llamar manualmente una vez tras deploy.
+    """
+    if controller.inventory_df is None or controller.inventory_df.empty:
+        controller.load_inventory()
+
+    unique_ids = controller.inventory_df['tcg_card_id'].unique().tolist()
+    # Forzar re-descarga de TODAS las cartas (no solo las faltantes)
+    controller.card_cache.clear()
+
+    import asyncio
+    from datetime import datetime
+
+    new_data = {}
+    errors = []
+    BATCH = 10
+
+    for i in range(0, len(unique_ids), BATCH):
+        batch = unique_ids[i:i + BATCH]
+        tasks = [controller.api_service.tcgdex.card.get(cid) for cid in batch]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for cid, card in zip(batch, results):
+            if not isinstance(card, Exception):
+                image_base = getattr(card, 'image', None)
+                new_data[cid] = {
+                    'name':            getattr(card, 'name', 'N/A'),
+                    'set_name':        getattr(card.set, 'name', 'N/A') if hasattr(card, 'set') else 'N/A',
+                    'local_id':        getattr(card, 'localId', 'N/A'),
+                    'image_url':       f"{image_base}/high.png" if image_base else None,
+                    'regulation_mark': getattr(card, 'regulationMark', None),
+                    'updated_at':      datetime.now().isoformat(),
+                }
+            else:
+                errors.append(cid)
+
+    if new_data:
+        controller.card_cache.bulk_set(new_data)
+
+    # Re-enriquecer con los nuevos datos
+    await controller.enrich_inventory()
+
+    return {
+        "total": len(unique_ids),
+        "updated": len(new_data),
+        "errors": len(errors),
+        "error_ids": errors[:20],
+    }
+
+
+@app.post("/reload", summary="Recargar inventario y caches desde Drive")
 async def reload():
-    """Fuerza una recarga del inventario desde Google Drive."""
+    """Fuerza una recarga del inventario y los caches desde Google Drive."""
+    # Recargar caches desde Drive (si MODE=google_drive)
+    controller.card_cache.cache = controller.card_cache._load_cache()
+    controller.sets_cache.cache = controller.sets_cache._load_cache()
     controller.load_inventory()
     await controller.enrich_inventory()
-    return {"message": "Inventario recargado."}
+    return {"message": "Inventario y caches recargados."}
 
 
 @app.get("/tcgdex/search", summary="Buscar cartas en TCGdex por nombre")

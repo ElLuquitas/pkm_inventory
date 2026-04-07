@@ -18,7 +18,8 @@ class CardCache(BaseCache):
     """
 
     def __init__(self):
-        super().__init__(cache_file='card_cache.json')
+        from src.config import CARD_CACHE_FILE_ID
+        super().__init__(cache_file='card_cache.json', drive_file_id=CARD_CACHE_FILE_ID)
 
     def set(self, tcg_card_id: str, card_info: dict) -> None:
         """

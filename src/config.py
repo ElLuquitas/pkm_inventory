@@ -17,7 +17,9 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # Configuración Google Drive (solo relevante cuando MODE='google_drive')
 GOOGLE_CREDENTIALS_PATH = os.getenv('GOOGLE_CREDENTIALS_PATH', 'credentials.json')
-GOOGLE_FILE_ID = os.getenv('GOOGLE_FILE_ID', '')
+GOOGLE_FILE_ID          = os.getenv('GOOGLE_FILE_ID', '')
+CARD_CACHE_FILE_ID      = os.getenv('CARD_CACHE_FILE_ID', '')
+SETS_CACHE_FILE_ID      = os.getenv('SETS_CACHE_FILE_ID', '')
 
 # Columnas del inventario ('id' es autogenerado, no se incluye en inputs)
 FIELDNAMES = ['id', 'tcg_card_id', 'count', 'available_count', 'language', 'foil_type', 'stamp', 'condition']
