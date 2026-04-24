@@ -15,7 +15,7 @@ from src.inventory_controller import InventoryController
 
 class CardInput(BaseModel):
     tcg_card_id: str = Field(..., example="sv01-001")
-    count: int = Field(..., gt=0, example=1)
+    count: int = Field(..., ge=0, example=1)
     available_count: int = Field(default=0, ge=0, example=0)
     language: str = Field(..., example="EN")
     foil_type: str = Field(..., example="Normal")

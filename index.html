@@ -436,10 +436,14 @@
       </select>
     </div>
     <button class="btn btn-ghost btn-full" onclick="clearFilters()">✕ Limpiar</button>
-    <div class="filter-group" style="margin-top:0.25rem">
+    <div class="filter-group" style="margin-top:0.25rem;display:flex;flex-direction:column;gap:0.4rem">
       <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.67rem;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.08em">
         <input type="checkbox" id="f-available" onchange="applyFilters()" style="width:auto;accent-color:var(--accent)" />
         Solo disponibles
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.67rem;font-family:var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:0.08em">
+        <input type="checkbox" id="f-hide-zero" onchange="applyFilters()" style="width:auto;accent-color:var(--accent)" />
+        Ocultar cantidad 0
       </label>
     </div>
   </aside>
@@ -529,7 +533,7 @@
       </div>
       <div class="form-group">
         <label>Cantidad <span style="color:var(--accent)">*</span></label>
-        <input type="number" id="m-count" min="1" value="1" oninput="clampAvailable()" />
+        <input type="number" id="m-count" min="0" value="1" oninput="clampAvailable()" />
       </div>
       <div class="form-group">
         <label>Disponible (venta/cambio)</label>
@@ -727,6 +731,7 @@ function applyFilters() {
   const condition = document.getElementById('f-condition').value;
   const stamp     = document.getElementById('f-stamp').value;
   const availOnly = document.getElementById('f-available').checked;
+  const hideZero  = document.getElementById('f-hide-zero').checked;
 
   filteredCards = allCards.filter(c => {
     if (name && !((c.card_name||'').toLowerCase().includes(name)||(c.tcg_card_id||'').toLowerCase().includes(name))) return false;
@@ -740,6 +745,7 @@ function applyFilters() {
       else if (s !== stamp) return false;
     }
     if (availOnly && !(c.available_count > 0)) return false;
+    if (hideZero && !(c.count > 0)) return false;
     return true;
   });
   document.getElementById('stat-showing').textContent = filteredCards.length;
@@ -748,7 +754,13 @@ function applyFilters() {
 
 function clearFilters() {
   ['f-name','f-set','f-language','f-foil','f-condition','f-stamp'].forEach(id=>{document.getElementById(id).value='';});
-  document.getElementById('f-available').checked = false;
+  // Solo disponibles: en modo restringido no se puede desmarcar
+  if (!editMode) {
+    document.getElementById('f-available').checked = true;
+  } else {
+    document.getElementById('f-available').checked = false;
+  }
+  document.getElementById('f-hide-zero').checked = false;
   applyFilters();
 }
 
@@ -1092,14 +1104,10 @@ function closeImgModal() {
 async function changeCount(id, delta) {
   try {
     if (delta>0) await api('POST',`/cards/${id}/increment`);
-    else {
-      const res = await api('POST',`/cards/${id}/decrement`);
-      if (res.reached_zero) toast(`Carta #${id} llegó a 0 — considera eliminarla.`);
-    }
+    else await api('POST',`/cards/${id}/decrement`);
     const card = allCards.find(c=>c.id===id);
     if (card) {
       card.count = Math.max(0, card.count + delta);
-      // available_count se sincroniza en la misma dirección, respetando los límites
       if (delta > 0) card.available_count = (card.available_count || 0) + 1;
       else card.available_count = Math.max(0, (card.available_count || 0) - 1);
     }
@@ -1201,7 +1209,7 @@ async function submitCard() {
     stamp:           document.getElementById('m-stamp').value,
   };
   if (!body.tcg_card_id) { toast('El ID Global es obligatorio.', true); return; }
-  if (!body.count||body.count<1) { toast('La cantidad debe ser mayor a 0.', true); return; }
+  if (body.count < 0) { toast('La cantidad no puede ser negativa.', true); return; }
   if (body.available_count < 0) { toast('La cantidad disponible no puede ser negativa.', true); return; }
   if (body.available_count > body.count) { toast('La cantidad disponible no puede superar la cantidad total.', true); return; }
 
@@ -1346,16 +1354,27 @@ function toggleSidebar() { document.getElementById('sidebar').classList.toggle('
 
 // ── Modo edición / readonly ──
 function applyEditMode() {
+  const availCheck = document.getElementById('f-available');
   if (editMode) {
     document.body.classList.remove('readonly');
     document.getElementById('lock-btn').textContent = '🔓';
     document.getElementById('lock-btn').title = 'Bloquear edición';
+    // En modo edición el filtro se libera
+    availCheck.disabled = false;
+    availCheck.parentElement.style.opacity = '';
+    availCheck.parentElement.title = '';
   } else {
     document.body.classList.add('readonly');
     document.getElementById('lock-btn').textContent = '🔒';
     document.getElementById('lock-btn').title = 'Desbloquear edición';
+    // En modo restringido: forzar "Solo disponibles" y bloquear el checkbox
+    availCheck.checked = true;
+    availCheck.disabled = true;
+    availCheck.parentElement.style.opacity = '0.5';
+    availCheck.parentElement.title = 'Solo visible en modo edición';
   }
   sessionStorage.setItem('editMode', editMode);
+  applyFilters();
 }
 
 function openPwModal() {
