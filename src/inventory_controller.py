@@ -11,6 +11,56 @@ from src.card_cache import CardCache
 from src.sets_cache import SetsCache
 
 
+def build_functional_hash(card) -> str | None:
+    """
+    Genera un hash que identifica funcionalmente a una carta Pokémon.
+
+    Dos cartas con el mismo hash son mecánicamente idénticas (mismo Pokémon,
+    mismo stage, mismo HP, mismos ataques con mismo daño, mismas habilidades)
+    aunque tengan arte o rareza distintos — es decir, son reprints intercambiables.
+
+    Solo aplica a cartas de categoría 'Pokemon'. Para Trainer/Energy retorna None.
+
+    El hash se construye sobre:
+      - hp
+      - stage  
+      - retreat
+      - ataques: (nombre, daño)  — ordenados para ser orden-independientes
+      - habilidades: (nombre, tipo) — ordenadas igual
+
+    Intencionalmente excluimos 'effect' de ataques/habilidades porque el wording
+    puede variar entre reprints (errata de texto) sin cambiar la mecánica.
+    """
+    import hashlib
+
+    category = getattr(card, 'category', None)
+    if not category or category.lower() != 'pokemon':
+        return None
+
+    parts = [
+        f"hp:{getattr(card, 'hp', '')}",
+        f"stage:{getattr(card, 'stage', '')}",
+        f"retreat:{getattr(card, 'retreat', '')}",
+    ]
+
+    attacks = getattr(card, 'attacks', None) or []
+    attack_parts = sorted(
+        f"{getattr(a, 'name', '')}|{getattr(a, 'damage', '')}"
+        for a in attacks
+    )
+    parts.append("attacks:" + ",".join(attack_parts))
+
+    abilities = getattr(card, 'abilities', None) or []
+    ability_parts = sorted(
+        f"{getattr(ab, 'name', '')}|{getattr(ab, 'type', '')}"
+        for ab in abilities
+    )
+    parts.append("abilities:" + ",".join(ability_parts))
+
+    raw = "|".join(parts)
+    return hashlib.md5(raw.encode()).hexdigest()
+
+
 class InventoryController:
     """Orquesta todas las operaciones del inventario."""
 
@@ -102,8 +152,8 @@ class InventoryController:
             return False, False
         row = self.inventory_df.loc[card_id]
         new_count = row['count'] - 1
-        if new_count < 0:
-            return False, False  # No bajar de 0
+        if new_count <= 0:
+            return True, True
         # available_count baja en 1 pero nunca por debajo de 0
         cur_avail = int(row.get('available_count', 0) or 0)
         new_avail = max(0, cur_avail - 1)
@@ -178,10 +228,12 @@ class InventoryController:
                 if not isinstance(card, Exception):
                     image_base = getattr(card, 'image', None)
                     new_data[tcg_id] = {
-                        'name':      getattr(card, 'name', 'N/A'),
-                        'set_name':  getattr(card.set, 'name', 'N/A') if hasattr(card, 'set') else 'N/A',
-                        'local_id':  getattr(card, 'localId', 'N/A'),
-                        'image_url': f"{image_base}/high.png" if image_base else None,
+                        'name':            getattr(card, 'name', 'N/A'),
+                        'set_name':        getattr(card.set, 'name', 'N/A') if hasattr(card, 'set') else 'N/A',
+                        'local_id':        getattr(card, 'localId', 'N/A'),
+                        'image_url':       f"{image_base}/high.png" if image_base else None,
+                        'category':        getattr(card, 'category', None),
+                        'functional_hash': build_functional_hash(card),
                     }
 
         if new_data:
@@ -220,8 +272,8 @@ class InventoryController:
         if not tcg_id:
             raise ValueError("El ID Global no puede estar vacío.")
         count = card_data.get('count', 0)
-        if not isinstance(count, int) or count < 0:
-            raise ValueError("La cantidad debe ser un número entero mayor o igual a 0.")
+        if not isinstance(count, int) or count <= 0:
+            raise ValueError("La cantidad debe ser un número entero mayor a 0.")
         available = card_data.get('available_count', 0)
         try:
             available = int(available)

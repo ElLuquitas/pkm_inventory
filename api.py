@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.inventory_controller import InventoryController
+from src.inventory_controller import build_functional_hash
 
 
 # ------------------------------------------------------------------
@@ -15,7 +16,7 @@ from src.inventory_controller import InventoryController
 
 class CardInput(BaseModel):
     tcg_card_id: str = Field(..., example="sv01-001")
-    count: int = Field(..., ge=0, example=1)
+    count: int = Field(..., gt=0, example=1)
     available_count: int = Field(default=0, ge=0, example=0)
     language: str = Field(..., example="EN")
     foil_type: str = Field(..., example="Normal")
@@ -209,6 +210,8 @@ async def rebuild_cache():
                     'local_id':        getattr(card, 'localId', 'N/A'),
                     'image_url':       f"{image_base}/high.png" if image_base else None,
                     'regulation_mark': getattr(card, 'regulationMark', None),
+                    'category':        getattr(card, 'category', None),
+                    'functional_hash': build_functional_hash(card),
                     'updated_at':      datetime.now().isoformat(),
                 }
             else:
@@ -476,9 +479,11 @@ async def check_decklist(body: DecklistInput):
 
     parsed = _parse_decklist(body.text)
     results = []
+    current_category = ''  # rastrea la sección actual: 'pokémon', 'trainer', 'energy'
 
     for item in parsed:
         if item['type'] == 'category':
+            current_category = item['label'].lower()
             results.append(item)
             continue
 
@@ -506,18 +511,81 @@ async def check_decklist(body: DecklistInput):
 
         tcg_id = f"{set_id}-{number_fmt}"
 
-        # Buscar en inventario
+        # Buscar en inventario — primero por ID exacto
         mask = df['tcg_card_id'] == tcg_id
+        reprint_ids: list[str] = []
+
         if mask.any():
             if body.available_only and 'available_count' in df.columns:
                 have = int(df.loc[mask, 'available_count'].fillna(0).astype(int).sum())
             else:
                 have = int(df.loc[mask, 'count'].sum())
         else:
-            have = 0
+            is_trainer_or_energy = any(
+                kw in current_category for kw in ('trainer', 'energy', 'energía', 'entrenador')
+            )
+            is_pokemon = 'pok' in current_category  # cubre 'pokémon', 'pokemon'
+
+            if is_trainer_or_energy:
+                # Fallback por nombre normalizado: Trainers y Energías son
+                # intercambiables entre ediciones si tienen el mismo nombre.
+                card_name_target = (controller.card_cache.get(tcg_id) or {}).get('name') or item['name']
+                norm_target = _normalize(card_name_target)
+
+                inventory_ids = df['tcg_card_id'].unique().tolist()
+                name_matches = [
+                    cid for cid in inventory_ids
+                    if _normalize((controller.card_cache.get(cid) or {}).get('name', '')) == norm_target
+                ]
+                if name_matches:
+                    reprint_ids = [cid for cid in name_matches if cid != tcg_id]
+                    reprint_mask = df['tcg_card_id'].isin(name_matches)
+                    if body.available_only and 'available_count' in df.columns:
+                        have = int(df.loc[reprint_mask, 'available_count'].fillna(0).astype(int).sum())
+                    else:
+                        have = int(df.loc[reprint_mask, 'count'].sum())
+                else:
+                    have = 0
+
+            elif is_pokemon:
+                # Fallback por functional_hash: Pokémon son intercambiables
+                # entre ediciones solo si son mecánicamente idénticos
+                # (mismo HP, stage, ataques y habilidades).
+                # Requiere que el card_cache tenga 'functional_hash';
+                # si no está (cache viejo), no hacemos fallback.
+                target_hash = (controller.card_cache.get(tcg_id) or {}).get('functional_hash')
+
+                if target_hash:
+                    inventory_ids = df['tcg_card_id'].unique().tolist()
+                    hash_matches = [
+                        cid for cid in inventory_ids
+                        if (controller.card_cache.get(cid) or {}).get('functional_hash') == target_hash
+                        and cid != tcg_id
+                    ]
+                    if hash_matches:
+                        reprint_ids = hash_matches
+                        reprint_mask = df['tcg_card_id'].isin(hash_matches)
+                        if body.available_only and 'available_count' in df.columns:
+                            have = int(df.loc[reprint_mask, 'available_count'].fillna(0).astype(int).sum())
+                        else:
+                            have = int(df.loc[reprint_mask, 'count'].sum())
+                    else:
+                        have = 0
+                else:
+                    # Sin hash en cache: no podemos confirmar que sean el mismo Pokémon
+                    have = 0
+
+            else:
+                have = 0
 
         missing = max(0, item['qty'] - have)
-        results.append({**item, 'tcg_id': tcg_id, 'have': have, 'missing': missing})
+        results.append({
+            **item,
+            'tcg_id': tcg_id,
+            'have': have,
+            'missing': missing,
+            **({"reprint_ids": reprint_ids} if reprint_ids else {}),
+        })
 
     return results
 
