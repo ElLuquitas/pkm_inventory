@@ -405,6 +405,16 @@ async def _build_ptcgl_map() -> dict:
     if unresolved:
         print(f"[ptcgl_map] {len(unresolved)} sets sin resolver: {unresolved[:10]}")
 
+    # Overrides manuales para sets exclusivos de TCGdex que no existen en pokemontcg.io.
+    # Estos son sets de energías básicas que TCGdex agrupa por era pero pokemontcg.io no conoce.
+    MANUAL_OVERRIDES = {
+        'MEE': 'mee',   # Mega Evolution Energy
+        'SVE': 'sve',   # Scarlet & Violet Energy
+    }
+    for code, set_id in MANUAL_OVERRIDES.items():
+        if code not in mapping:
+            mapping[code] = set_id
+
     print(f"[ptcgl_map] Mapa construido: {len(mapping)} abreviaciones resueltas.")
     return mapping
 
