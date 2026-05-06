@@ -3,9 +3,7 @@ credentials.json
 .env
 
 # Datos locales
-data/inventory.csv
-data/card_cache.json
-data/sets_cache.json
+data/
 useless/
 run_inventory.sh
 
