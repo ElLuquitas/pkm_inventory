@@ -152,14 +152,14 @@ class InventoryController:
             return False, False
         row = self.inventory_df.loc[card_id]
         new_count = row['count'] - 1
-        if new_count <= 0:
-            return True, True
-        # available_count baja en 1 pero nunca por debajo de 0
+        if new_count < 0:
+            return True, True  # ya estaba en 0, no hacer nada
         cur_avail = int(row.get('available_count', 0) or 0)
         new_avail = max(0, cur_avail - 1)
-        return self.data_manager.update_card(card_id, {
+        success = self.data_manager.update_card(card_id, {
             **row.to_dict(), 'count': new_count, 'available_count': new_avail
-        }), False
+        })
+        return success, new_count == 0
 
     # ------------------------------------------------------------------
     # Filtrado
@@ -272,8 +272,8 @@ class InventoryController:
         if not tcg_id:
             raise ValueError("El ID Global no puede estar vacío.")
         count = card_data.get('count', 0)
-        if not isinstance(count, int) or count <= 0:
-            raise ValueError("La cantidad debe ser un número entero mayor a 0.")
+        if not isinstance(count, int) or count < 0:
+            raise ValueError("La cantidad debe ser un número entero mayor o igual a 0.")
         available = card_data.get('available_count', 0)
         try:
             available = int(available)
