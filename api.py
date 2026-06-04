@@ -148,22 +148,25 @@ async def delete_card(card_id: int):
 
 
 @app.post("/cards/{card_id}/increment", summary="Incrementar cantidad")
-def increment(card_id: int):
+async def increment(card_id: int):
     """Incrementa en 1 la cantidad de una carta."""
     controller.load_inventory()
     success = controller.increment_count(card_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Carta con ID {card_id} no encontrada.")
+    controller.load_inventory()
+    await controller.enrich_inventory()
     return {"message": "Cantidad incrementada."}
 
-
 @app.post("/cards/{card_id}/decrement", summary="Decrementar cantidad")
-def decrement(card_id: int):
-    """Decrementa en 1 la cantidad de una carta. No elimina si llega a 0."""
+async def decrement(card_id: int):
+    """Decrementa en 1 la cantidad de una carta."""
     controller.load_inventory()
     success, reached_zero = controller.decrement_count(card_id)
     if not success:
         raise HTTPException(status_code=404, detail=f"Carta con ID {card_id} no encontrada.")
+    controller.load_inventory()
+    await controller.enrich_inventory()
     return {"message": "Cantidad decrementada.", "reached_zero": reached_zero}
 
 
